@@ -11,10 +11,10 @@ export async function checkNavigation(
   const checkedNavigationLinks = new Set<string>();
 
   // Räknar fungerande navigationer
-  let navigationPassed = 0;
+  let passed = 0;
 
   // Räknar navigationer som inte fungerar
-  let navigationFailed = 0;
+  let failed = 0;
 
   console.log("\nNavigation check:");
 
@@ -66,7 +66,9 @@ export async function checkNavigation(
     for (const link of uniqueNavigationLinks) {
 
       // Kontrollerar om länken är intern
-      const isInternalLink = link.startsWith(new URL(url).origin);
+      const isInternalLink = link.startsWith(
+        new URL(url).origin
+      );
 
       // Hoppar över externa länkar
       if (!isInternalLink) continue;
@@ -87,11 +89,11 @@ export async function checkNavigation(
         // Kontrollerar om navigationen fungerar
         if (status >= 200 && status < 400) {
 
-          navigationPassed++;
+          passed++;
 
         } else {
 
-          navigationFailed++;
+          failed++;
 
           console.log(
             `✗ Navigation - ${link} - ${status}`
@@ -101,7 +103,7 @@ export async function checkNavigation(
       } catch {
 
         // Navigationen kunde inte nås
-        navigationFailed++;
+        failed++;
 
         console.log(
           `✗ Navigation - ${link} - Request failed`
@@ -110,22 +112,16 @@ export async function checkNavigation(
     }
   }
 
-  // Visar resultatet
+  // Visar sammanfattning
+  console.log("\nNavigation summary:");
+
   console.log(
-    `✓ ${navigationPassed} interna navigationslänkar fungerar`
+    `Navigation: ${passed} passed, ${failed} failed`
   );
 
-  // Visar eventuella fel
-  if (navigationFailed > 0) {
-
-    console.log(
-      `✗ ${navigationFailed} interna navigationslänkar fungerar inte`
-    );
-  }
-
-  // Returnerar resultatet
+  // Returnerar resultaten till QA-systemet
   return {
-    passed: navigationPassed,
-    failed: navigationFailed,
+    passed,
+    failed,
   };
 }
