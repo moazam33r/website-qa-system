@@ -1,10 +1,7 @@
 import { Page } from "@playwright/test";
 
 export async function scanWebsite(page: Page, url: string) {
-  // Öppnar webbplatsen och hämtar HTTP-svaret
   const response = await page.goto(url);
-
-  // Hämtar statuskod och sidtitel från startsidan
   const status = response?.status() ?? 0;
   const title = await page.title();
 
@@ -13,15 +10,12 @@ export async function scanWebsite(page: Page, url: string) {
       .map((element) => {
         const href = (element as HTMLAnchorElement).href;
         const linkUrl = new URL(href);
-
         linkUrl.hash = "";
-
         return linkUrl.toString();
       })
       .filter((href) => href.startsWith(window.location.origin))
   );
 
-  // Tar bort eventuella dubbletter
   const uniqueLinks = [...new Set(links)];
 
   console.log("Website:", url);
@@ -29,13 +23,9 @@ export async function scanWebsite(page: Page, url: string) {
   console.log("Title:", title);
   console.log("Internal links:", uniqueLinks.length);
 
-  // Skriver ut alla hittade interna sidor
   console.log("\nPages found:");
-  uniqueLinks.forEach((link) => {
-    console.log("-", link);
-  });
+  uniqueLinks.forEach((link) => console.log("-", link));
 
-  // Kontrollerar HTTP-status för varje intern sida
   console.log("\nPage status:");
 
   for (const link of uniqueLinks) {
@@ -49,7 +39,6 @@ export async function scanWebsite(page: Page, url: string) {
     }
   }
 
-  // Kontrollerar länkar på varje intern sida
   console.log("\nBroken link check:");
 
   const checkedLinks = new Set<string>();
@@ -61,9 +50,7 @@ export async function scanWebsite(page: Page, url: string) {
       elements.map((element) => {
         const href = (element as HTMLAnchorElement).href;
         const linkUrl = new URL(href);
-
         linkUrl.hash = "";
-
         return linkUrl.toString();
       })
     );
@@ -71,13 +58,10 @@ export async function scanWebsite(page: Page, url: string) {
     const uniquePageLinks = [...new Set(pageLinks)];
 
     for (const link of uniquePageLinks) {
-      if (checkedLinks.has(link)) {
-        continue;
-      }
+      if (checkedLinks.has(link)) continue;
 
       checkedLinks.add(link);
 
-      // Hoppar över telefon-, e-post- och JavaScript-länkar
       if (
         link.startsWith("mailto:") ||
         link.startsWith("tel:") ||
@@ -88,22 +72,22 @@ export async function scanWebsite(page: Page, url: string) {
 
       const isInternalLink = link.startsWith(new URL(url).origin);
 
-     if (!isInternalLink) {
-  try {
-    const externalResponse = await page.request.get(link);
-    const externalStatus = externalResponse.status();
+      if (!isInternalLink) {
+        try {
+          const externalResponse = await page.request.get(link);
+          const externalStatus = externalResponse.status();
 
-    if (externalStatus >= 200 && externalStatus < 400) {
-      console.log(`✓ Extern länk - ${link} - ${externalStatus}`);
-    } else {
-      console.log(`✗ Extern länk - ${link} - ${externalStatus}`);
-    }
-  } catch {
-    console.log(`✗ Extern länk - ${link} - Request failed`);
-  }
+          if (externalStatus >= 200 && externalStatus < 400) {
+            console.log(`✓ Extern länk - ${link} - ${externalStatus}`);
+          } else {
+            console.log(`✗ Extern länk - ${link} - ${externalStatus}`);
+          }
+        } catch {
+          console.log(`✗ Extern länk - ${link} - Request failed`);
+        }
 
-  continue;
-}
+        continue;
+      }
 
       try {
         const linkResponse = await page.request.get(link);
@@ -120,7 +104,73 @@ export async function scanWebsite(page: Page, url: string) {
     }
   }
 
-  // Kontrollerar bilder på alla interna sidor
+  console.log("\nNavigation check:");
+
+  const checkedNavigationLinks = new Set<string>();
+  let navigationPassed = 0;
+  let navigationFailed = 0;
+
+  for (const pageUrl of uniqueLinks) {
+    await page.goto(pageUrl);
+
+    const navigationLinks = await page.locator("a[href]").evaluateAll((elements) =>
+      elements
+        .map((element) => {
+          const href = (element as HTMLAnchorElement).href;
+
+          if (
+            href.startsWith("mailto:") ||
+            href.startsWith("tel:") ||
+            href.startsWith("javascript:")
+          ) {
+            return null;
+          }
+
+          const linkUrl = new URL(href);
+          linkUrl.hash = "";
+
+          return linkUrl.toString();
+        })
+        .filter((href): href is string => href !== null)
+    );
+
+    const uniqueNavigationLinks = [...new Set(navigationLinks)];
+
+    for (const link of uniqueNavigationLinks) {
+      const isInternalLink = link.startsWith(new URL(url).origin);
+
+      if (!isInternalLink) continue;
+      if (checkedNavigationLinks.has(link)) continue;
+
+      checkedNavigationLinks.add(link);
+
+      try {
+        const response = await page.request.get(link);
+        const linkStatus = response.status();
+
+        if (linkStatus >= 200 && linkStatus < 400) {
+          navigationPassed++;
+        } else {
+          navigationFailed++;
+          console.log(`✗ Navigation - ${link} - ${linkStatus}`);
+        }
+      } catch {
+        navigationFailed++;
+        console.log(`✗ Navigation - ${link} - Request failed`);
+      }
+    }
+  }
+
+  console.log(
+    `✓ ${navigationPassed} interna navigationslänkar fungerar`
+  );
+
+  if (navigationFailed > 0) {
+    console.log(
+      `✗ ${navigationFailed} interna navigationslänkar fungerar inte`
+    );
+  }
+
   console.log("\nBroken image check:");
 
   const checkedImages = new Set<string>();
@@ -135,14 +185,8 @@ export async function scanWebsite(page: Page, url: string) {
     const uniqueImageUrls = [...new Set(imageUrls)];
 
     for (const imageUrl of uniqueImageUrls) {
-      // Hoppar över inline-bilder med data-URL
-      if (imageUrl.startsWith("data:")) {
-        continue;
-      }
-
-      if (checkedImages.has(imageUrl)) {
-        continue;
-      }
+      if (imageUrl.startsWith("data:")) continue;
+      if (checkedImages.has(imageUrl)) continue;
 
       checkedImages.add(imageUrl);
 
@@ -161,7 +205,6 @@ export async function scanWebsite(page: Page, url: string) {
     }
   }
 
-  // Kontrollerar formulär på alla interna sidor
   console.log("\nForm check:");
 
   for (const pageUrl of uniqueLinks) {
@@ -179,7 +222,6 @@ export async function scanWebsite(page: Page, url: string) {
 
     for (let i = 0; i < formCount; i++) {
       const form = forms.nth(i);
-
       const fields = form.locator("input, textarea, select");
       const fieldCount = await fields.count();
 
@@ -198,7 +240,7 @@ export async function scanWebsite(page: Page, url: string) {
       }
     }
   }
-      // Kontrollerar obligatoriska formulärfält
+
   console.log("\nRequired field check:");
 
   for (const pageUrl of uniqueLinks) {
@@ -207,9 +249,7 @@ export async function scanWebsite(page: Page, url: string) {
     const forms = page.locator("form");
     const formCount = await forms.count();
 
-    if (formCount === 0) {
-      continue;
-    }
+    if (formCount === 0) continue;
 
     for (let i = 0; i < formCount; i++) {
       const form = forms.nth(i);
@@ -239,7 +279,6 @@ export async function scanWebsite(page: Page, url: string) {
     }
   }
 
-  // Testar e-postvalidering i formulär
   console.log("\nForm validation check:");
 
   for (const pageUrl of uniqueLinks) {
@@ -251,9 +290,7 @@ export async function scanWebsite(page: Page, url: string) {
 
     const emailCount = await emailFields.count();
 
-    if (emailCount === 0) {
-      continue;
-    }
+    if (emailCount === 0) continue;
 
     console.log(`\nE-postvalidering: ${pageUrl}`);
 
@@ -273,7 +310,7 @@ export async function scanWebsite(page: Page, url: string) {
       }
     }
   }
-    // Testar telefonnummer-validering i formulär
+
   console.log("\nPhone validation check:");
 
   for (const pageUrl of uniqueLinks) {
@@ -285,9 +322,7 @@ export async function scanWebsite(page: Page, url: string) {
 
     const phoneCount = await phoneFields.count();
 
-    if (phoneCount === 0) {
-      continue;
-    }
+    if (phoneCount === 0) continue;
 
     console.log(`\nTelefonvalidering: ${pageUrl}`);
 
