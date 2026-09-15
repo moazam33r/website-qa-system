@@ -152,6 +152,50 @@ export async function scanWebsite(page: Page, url: string) {
     }
   }
 
+  // Kontrollerar formulär på alla interna sidor
+  console.log("\nForm check:");
+
+  for (const pageUrl of uniqueLinks) {
+    // Öppnar sidan som ska kontrolleras
+    await page.goto(pageUrl);
+
+    // Hittar alla formulär på sidan
+    const forms = page.locator("form");
+    const formCount = await forms.count();
+
+    // Rapporterar om sidan innehåller formulär
+    if (formCount === 0) {
+      console.log(`- ${pageUrl} - Inga formulär hittades`);
+      continue;
+    }
+
+    console.log(`✓ ${pageUrl} - ${formCount} formulär hittades`);
+
+    // Går igenom varje formulär på sidan
+    for (let i = 0; i < formCount; i++) {
+      const form = forms.nth(i);
+
+      // Hämtar alla input-, textarea- och select-fält
+      const fields = form.locator("input, textarea, select");
+      const fieldCount = await fields.count();
+
+      console.log(`  Formulär ${i + 1}: ${fieldCount} fält`);
+
+      // Skriver ut information om varje fält
+      for (let j = 0; j < fieldCount; j++) {
+        const field = fields.nth(j);
+
+        const type = await field.getAttribute("type");
+        const name = await field.getAttribute("name");
+        const placeholder = await field.getAttribute("placeholder");
+
+        console.log(
+          `    - type=${type ?? "okänd"}, name=${name ?? "saknas"}, placeholder=${placeholder ?? "saknas"}`
+        );
+      }
+    }
+  }
+
   // Returnerar information som kan användas av andra tester
   return {
     url,
