@@ -1,0 +1,27 @@
+{
+  "name": "website-qa-system",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moazam33r/website-qa-system.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/moazam33r/website-qa-system/issues"
+  },
+  "homepage": "https://github.com/moazam33r/website-qa-system#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.5.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^7.0.2"
+  }
+}
