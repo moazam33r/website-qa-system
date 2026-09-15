@@ -105,6 +105,53 @@ export async function scanWebsite(page: Page, url: string) {
     }
   }
 
+  // Kontrollerar bilder på alla interna sidor
+  console.log("\nBroken image check:");
+
+  // Håller reda på bilder som redan har kontrollerats
+  const checkedImages = new Set<string>();
+
+  for (const pageUrl of uniqueLinks) {
+    // Öppnar sidan som ska kontrolleras
+    await page.goto(pageUrl);
+
+    // Hämtar alla bildadresser från sidan
+    const imageUrls = await page.locator("img[src]").evaluateAll((elements) =>
+      elements.map((element) => (element as HTMLImageElement).src)
+    );
+
+    // Tar bort dubbletter från sidan
+    const uniqueImageUrls = [...new Set(imageUrls)];
+
+    // Kontrollerar varje bild
+    for (const imageUrl of uniqueImageUrls) {
+      // Hoppar över bilder som redan har kontrollerats
+      if (checkedImages.has(imageUrl)) {
+        continue;
+      }
+
+      // Lägger till bilden så att den inte kontrolleras igen
+      checkedImages.add(imageUrl);
+
+      try {
+        // Skickar en HTTP-request till bilden
+        const imageResponse = await page.request.get(imageUrl);
+        const imageStatus = imageResponse.status();
+
+        // Godkänner statuskoder mellan 200 och 399
+        if (imageStatus >= 200 && imageStatus < 400) {
+          console.log(`✓ ${imageUrl} - ${imageStatus}`);
+        } else {
+          // Rapporterar bilder som exempelvis returnerar 404 eller 500
+          console.log(`✗ ${imageUrl} - ${imageStatus}`);
+        }
+      } catch {
+        // Hanterar bilder där requesten misslyckas
+        console.log(`✗ ${imageUrl} - Request failed`);
+      }
+    }
+  }
+
   // Returnerar information som kan användas av andra tester
   return {
     url,
