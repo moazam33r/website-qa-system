@@ -88,10 +88,22 @@ export async function scanWebsite(page: Page, url: string) {
 
       const isInternalLink = link.startsWith(new URL(url).origin);
 
-      if (!isInternalLink) {
-        console.log(`⚠ Extern länk - ${link}`);
-        continue;
-      }
+     if (!isInternalLink) {
+  try {
+    const externalResponse = await page.request.get(link);
+    const externalStatus = externalResponse.status();
+
+    if (externalStatus >= 200 && externalStatus < 400) {
+      console.log(`✓ Extern länk - ${link} - ${externalStatus}`);
+    } else {
+      console.log(`✗ Extern länk - ${link} - ${externalStatus}`);
+    }
+  } catch {
+    console.log(`✗ Extern länk - ${link} - Request failed`);
+  }
+
+  continue;
+}
 
       try {
         const linkResponse = await page.request.get(link);
