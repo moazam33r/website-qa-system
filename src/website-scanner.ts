@@ -198,6 +198,46 @@ export async function scanWebsite(page: Page, url: string) {
       }
     }
   }
+      // Kontrollerar obligatoriska formulärfält
+  console.log("\nRequired field check:");
+
+  for (const pageUrl of uniqueLinks) {
+    await page.goto(pageUrl);
+
+    const forms = page.locator("form");
+    const formCount = await forms.count();
+
+    if (formCount === 0) {
+      continue;
+    }
+
+    for (let i = 0; i < formCount; i++) {
+      const form = forms.nth(i);
+
+      const requiredFields = form.locator(
+        'input[required], textarea[required], select[required], [aria-required="true"]'
+      );
+
+      const requiredCount = await requiredFields.count();
+
+      if (requiredCount > 0) {
+        console.log(`\nObligatoriska fält: ${pageUrl}`);
+        console.log(`✓ ${requiredCount} obligatoriska fält hittades`);
+
+        for (let j = 0; j < requiredCount; j++) {
+          const field = requiredFields.nth(j);
+
+          const type = await field.getAttribute("type");
+          const name = await field.getAttribute("name");
+          const placeholder = await field.getAttribute("placeholder");
+
+          console.log(
+            `  - type=${type ?? "okänd"}, name=${name ?? "saknas"}, placeholder=${placeholder ?? "saknas"}`
+          );
+        }
+      }
+    }
+  }
 
   // Testar e-postvalidering i formulär
   console.log("\nForm validation check:");
@@ -230,6 +270,40 @@ export async function scanWebsite(page: Page, url: string) {
         console.log("⚠ Ogiltig e-post accepterades");
       } else {
         console.log("✓ Ogiltig e-post stoppades");
+      }
+    }
+  }
+    // Testar telefonnummer-validering i formulär
+  console.log("\nPhone validation check:");
+
+  for (const pageUrl of uniqueLinks) {
+    await page.goto(pageUrl);
+
+    const phoneFields = page.locator(
+      'input[type="tel"], input[name*="phone" i], input[name*="telefon" i], input[name*="mobile" i]'
+    );
+
+    const phoneCount = await phoneFields.count();
+
+    if (phoneCount === 0) {
+      continue;
+    }
+
+    console.log(`\nTelefonvalidering: ${pageUrl}`);
+
+    for (let i = 0; i < phoneCount; i++) {
+      const phoneField = phoneFields.nth(i);
+
+      await phoneField.fill("070abc123");
+
+      const isValid = await phoneField.evaluate(
+        (element) => (element as HTMLInputElement).checkValidity()
+      );
+
+      if (isValid) {
+        console.log("⚠ Ogiltigt telefonnummer accepterades");
+      } else {
+        console.log("✓ Ogiltigt telefonnummer stoppades");
       }
     }
   }
