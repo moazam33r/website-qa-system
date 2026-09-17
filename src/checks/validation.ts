@@ -1,7 +1,22 @@
 import { Page } from "@playwright/test";
 
 // Kontrollerar validering av formulär
-export async function checkValidation(page: Page, pages: string[]) {
+export async function checkValidation(
+  page: Page,
+  pages: string[]
+) {
+
+  // Räknar e-postfält som klarar valideringen
+  let emailPassed = 0;
+
+  // Räknar e-postfält som inte klarar valideringen
+  let emailFailed = 0;
+
+  // Räknar telefonfält som klarar valideringen
+  let phonePassed = 0;
+
+  // Räknar telefonfält som inte klarar valideringen
+  let phoneFailed = 0;
 
   // Kontrollerar obligatoriska fält
   console.log("\nRequired field check:");
@@ -32,28 +47,19 @@ export async function checkValidation(page: Page, pages: string[]) {
 
       if (requiredCount > 0) {
 
-        console.log(`\nObligatoriska fält: ${pageUrl}`);
-        console.log(`✓ ${requiredCount} obligatoriska fält hittades`);
+        console.log(
+          `\nObligatoriska fält: ${pageUrl}`
+        );
 
-        // Visar information om varje obligatoriskt fält
-        for (let j = 0; j < requiredCount; j++) {
-
-          const field = requiredFields.nth(j);
-
-          const type = await field.getAttribute("type");
-          const name = await field.getAttribute("name");
-          const placeholder = await field.getAttribute("placeholder");
-
-          console.log(
-            `  - type=${type ?? "okänd"}, name=${name ?? "saknas"}, placeholder=${placeholder ?? "saknas"}`
-          );
-        }
+        console.log(
+          `✓ ${requiredCount} obligatoriska fält hittades`
+        );
       }
     }
   }
 
   // Kontrollerar e-postvalidering
-  console.log("\nForm validation check:");
+  console.log("\nEmail validation check:");
 
   for (const pageUrl of pages) {
 
@@ -70,7 +76,9 @@ export async function checkValidation(page: Page, pages: string[]) {
     // Hoppar över sidor utan e-postfält
     if (emailCount === 0) continue;
 
-    console.log(`\nE-postvalidering: ${pageUrl}`);
+    console.log(
+      `\nE-postvalidering: ${pageUrl}`
+    );
 
     // Testar varje e-postfält
     for (let i = 0; i < emailCount; i++) {
@@ -82,13 +90,25 @@ export async function checkValidation(page: Page, pages: string[]) {
 
       // Kontrollerar webbläsarens validering
       const isValid = await emailField.evaluate(
-        (element) => (element as HTMLInputElement).checkValidity()
+        (element) =>
+          (element as HTMLInputElement).checkValidity()
       );
 
       if (isValid) {
-        console.log("⚠ Ogiltig e-post accepterades");
+
+        emailFailed++;
+
+        console.log(
+          "⚠ Ogiltig e-post accepterades"
+        );
+
       } else {
-        console.log("✓ Ogiltig e-post stoppades");
+
+        emailPassed++;
+
+        console.log(
+          "✓ Ogiltig e-post stoppades"
+        );
       }
     }
   }
@@ -111,7 +131,9 @@ export async function checkValidation(page: Page, pages: string[]) {
     // Hoppar över sidor utan telefonfält
     if (phoneCount === 0) continue;
 
-    console.log(`\nTelefonvalidering: ${pageUrl}`);
+    console.log(
+      `\nTelefonvalidering: ${pageUrl}`
+    );
 
     // Testar varje telefonfält
     for (let i = 0; i < phoneCount; i++) {
@@ -123,14 +145,45 @@ export async function checkValidation(page: Page, pages: string[]) {
 
       // Kontrollerar webbläsarens validering
       const isValid = await phoneField.evaluate(
-        (element) => (element as HTMLInputElement).checkValidity()
+        (element) =>
+          (element as HTMLInputElement).checkValidity()
       );
 
       if (isValid) {
-        console.log("⚠ Ogiltigt telefonnummer accepterades");
+
+        phoneFailed++;
+
+        console.log(
+          "⚠ Ogiltigt telefonnummer accepterades"
+        );
+
       } else {
-        console.log("✓ Ogiltigt telefonnummer stoppades");
+
+        phonePassed++;
+
+        console.log(
+          "✓ Ogiltigt telefonnummer stoppades"
+        );
       }
     }
   }
+
+  // Visar sammanfattning
+  console.log("\nValidation summary:");
+
+  console.log(
+    `Email validation: ${emailPassed} passed, ${emailFailed} failed`
+  );
+
+  console.log(
+    `Phone validation: ${phonePassed} passed, ${phoneFailed} failed`
+  );
+
+  // Returnerar resultaten till QA-systemet
+  return {
+    emailPassed,
+    emailFailed,
+    phonePassed,
+    phoneFailed,
+  };
 }

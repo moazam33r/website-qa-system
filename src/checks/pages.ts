@@ -15,7 +15,7 @@ export async function checkPages(page: Page, url: string) {
   // Hämtar webbplatsens domän
   const origin = new URL(url).origin;
 
-  // Hämtar alla interna länkar på sidan
+  // Hämtar alla interna länkar på startsidan
   const links = await page.locator("a[href]").evaluateAll(
     (elements, origin) =>
       elements
@@ -36,7 +36,7 @@ export async function checkPages(page: Page, url: string) {
         // Behåller bara länkar från samma webbplats
         .filter((href) => href.startsWith(origin)),
 
-    // Skickar med webbplatsens domän till evaluateAll
+    // Skickar med webbplatsens domän
     origin
   );
 
@@ -57,7 +57,10 @@ export async function checkPages(page: Page, url: string) {
 
   console.log("\nPage status:");
 
-  // Besöker varje hittad sida och kontrollerar status
+  // Sparar resultatet för varje sida
+  const pageResults = [];
+
+  // Besöker varje hittad sida
   for (const link of uniqueLinks) {
 
     // Öppnar sidan
@@ -66,7 +69,14 @@ export async function checkPages(page: Page, url: string) {
     // Hämtar HTTP-status
     const pageStatus = pageResponse?.status() ?? 0;
 
-    // Kontrollerar om sidan svarar korrekt
+    // Sparar resultatet
+    pageResults.push({
+      url: link,
+      status: pageStatus,
+      working: pageStatus >= 200 && pageStatus < 400,
+    });
+
+    // Visar resultatet
     if (pageStatus >= 200 && pageStatus < 400) {
       console.log(`✓ ${link} - ${pageStatus}`);
     } else {
@@ -74,11 +84,24 @@ export async function checkPages(page: Page, url: string) {
     }
   }
 
-  // Skickar tillbaka resultatet till scanner-funktionen
+  // Räknar fungerande sidor
+  const passedPages = pageResults.filter(
+    (result) => result.working
+  ).length;
+
+  // Räknar sidor med fel
+  const failedPages = pageResults.filter(
+    (result) => !result.working
+  ).length;
+
+  // Returnerar resultatet
   return {
     url,
     status,
     title,
     links: uniqueLinks,
+    pages: pageResults,
+    passedPages,
+    failedPages,
   };
 }

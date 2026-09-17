@@ -1,7 +1,19 @@
 import { Page } from "@playwright/test";
 
 // Kontrollerar formulär och deras fält på webbplatsen
-export async function checkForms(page: Page, pages: string[]) {
+export async function checkForms(
+  page: Page,
+  pages: string[]
+) {
+
+  // Räknar antal formulär
+  let formCount = 0;
+
+  // Räknar antal fält
+  let fieldCount = 0;
+
+  // Räknar obligatoriska fält
+  let requiredCount = 0;
 
   // Går igenom alla sidor på webbplatsen
   for (const pageUrl of pages) {
@@ -11,29 +23,41 @@ export async function checkForms(page: Page, pages: string[]) {
 
     // Hämtar alla formulär
     const forms = page.locator("form");
-    const formCount = await forms.count();
+    const currentFormCount = await forms.count();
 
-    // Om sidan inte har något formulär går vi vidare
-    if (formCount === 0) {
-      console.log(`- ${pageUrl} - Inga formulär hittades`);
+    // Hoppar över sidor utan formulär
+    if (currentFormCount === 0) {
       continue;
     }
 
-    console.log(`✓ ${pageUrl} - ${formCount} formulär hittades`);
+    console.log(
+      `✓ ${pageUrl} - ${currentFormCount} formulär hittades`
+    );
+
+    // Lägger till formulären i totalsumman
+    formCount += currentFormCount;
 
     // Kontrollerar varje formulär
-    for (let i = 0; i < formCount; i++) {
+    for (let i = 0; i < currentFormCount; i++) {
 
       const form = forms.nth(i);
 
       // Hämtar alla input-, textarea- och select-fält
-      const fields = form.locator("input, textarea, select");
-      const fieldCount = await fields.count();
+      const fields = form.locator(
+        "input, textarea, select"
+      );
 
-      console.log(`  Formulär ${i + 1}: ${fieldCount} fält`);
+      const currentFieldCount = await fields.count();
+
+      // Lägger till fälten i totalsumman
+      fieldCount += currentFieldCount;
+
+      console.log(
+        `  Formulär ${i + 1}: ${currentFieldCount} fält`
+      );
 
       // Kontrollerar varje fält
-      for (let j = 0; j < fieldCount; j++) {
+      for (let j = 0; j < currentFieldCount; j++) {
 
         const field = fields.nth(j);
 
@@ -42,10 +66,45 @@ export async function checkForms(page: Page, pages: string[]) {
         const name = await field.getAttribute("name");
         const placeholder = await field.getAttribute("placeholder");
 
+        // Kontrollerar om fältet är obligatoriskt
+        const required = await field.getAttribute("required");
+        const ariaRequired = await field.getAttribute(
+          "aria-required"
+        );
+
+        if (
+          required !== null ||
+          ariaRequired === "true"
+        ) {
+          requiredCount++;
+        }
+
         console.log(
           `    - type=${type ?? "okänd"}, name=${name ?? "saknas"}, placeholder=${placeholder ?? "saknas"}`
         );
       }
     }
   }
+
+  // Visar sammanfattning
+  console.log("\nForm summary:");
+
+  console.log(
+    `Forms: ${formCount}`
+  );
+
+  console.log(
+    `Fields: ${fieldCount}`
+  );
+
+  console.log(
+    `Required fields: ${requiredCount}`
+  );
+
+  // Returnerar resultaten till QA-systemet
+  return {
+    formCount,
+    fieldCount,
+    requiredCount,
+  };
 }

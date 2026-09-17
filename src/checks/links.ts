@@ -1,10 +1,22 @@
 import { Page } from "@playwright/test";
 
 // Kontrollerar interna och externa länkar på webbplatsen
-export async function checkLinks(page: Page, url: string, pages: string[]) {
+export async function checkLinks(
+  page: Page,
+  url: string,
+  pages: string[]
+) {
 
   // Håller koll på länkar som redan har kontrollerats
   const checkedLinks = new Set<string>();
+
+  // Räknar interna länkar
+  let internalPassed = 0;
+  let internalFailed = 0;
+
+  // Räknar externa länkar
+  let externalPassed = 0;
+  let externalFailed = 0;
 
   // Går igenom alla sidor på webbplatsen
   for (const pageUrl of pages) {
@@ -33,7 +45,7 @@ export async function checkLinks(page: Page, url: string, pages: string[]) {
     // Kontrollerar varje länk
     for (const link of uniquePageLinks) {
 
-      // Hoppar över länkar som redan testats
+      // Hoppar över länkar som redan har testats
       if (checkedLinks.has(link)) continue;
 
       checkedLinks.add(link);
@@ -48,12 +60,15 @@ export async function checkLinks(page: Page, url: string, pages: string[]) {
       if (link.startsWith("javascript:")) continue;
 
       // Kontrollerar om länken är intern
-      const isInternalLink = link.startsWith(new URL(url).origin);
+      const isInternalLink = link.startsWith(
+        new URL(url).origin
+      );
 
       // Kontrollerar externa länkar
       if (!isInternalLink) {
 
         try {
+
           // Skickar en request till den externa länken
           const response = await page.request.get(link);
 
@@ -61,13 +76,29 @@ export async function checkLinks(page: Page, url: string, pages: string[]) {
           const status = response.status();
 
           if (status >= 200 && status < 400) {
-            console.log(`✓ Extern länk - ${link} - ${status}`);
+
+            externalPassed++;
+
+            console.log(
+              `✓ Extern länk - ${link} - ${status}`
+            );
+
           } else {
-            console.log(`✗ Extern länk - ${link} - ${status}`);
+
+            externalFailed++;
+
+            console.log(
+              `✗ Extern länk - ${link} - ${status}`
+            );
           }
 
         } catch {
-          console.log(`✗ Extern länk - ${link} - Request failed`);
+
+          externalFailed++;
+
+          console.log(
+            `✗ Extern länk - ${link} - Request failed`
+          );
         }
 
         continue;
@@ -75,6 +106,7 @@ export async function checkLinks(page: Page, url: string, pages: string[]) {
 
       // Kontrollerar interna länkar
       try {
+
         // Skickar en request till den interna länken
         const response = await page.request.get(link);
 
@@ -82,14 +114,49 @@ export async function checkLinks(page: Page, url: string, pages: string[]) {
         const status = response.status();
 
         if (status >= 200 && status < 400) {
-          console.log(`✓ ${link} - ${status}`);
+
+          internalPassed++;
+
+          console.log(
+            `✓ ${link} - ${status}`
+          );
+
         } else {
-          console.log(`✗ ${link} - ${status}`);
+
+          internalFailed++;
+
+          console.log(
+            `✗ ${link} - ${status}`
+          );
         }
 
       } catch {
-        console.log(`✗ ${link} - Request failed`);
+
+        internalFailed++;
+
+        console.log(
+          `✗ ${link} - Request failed`
+        );
       }
     }
   }
+
+  // Visar sammanfattning
+  console.log("\nLink summary:");
+
+  console.log(
+    `Internal links: ${internalPassed} passed, ${internalFailed} failed`
+  );
+
+  console.log(
+    `External links: ${externalPassed} passed, ${externalFailed} failed`
+  );
+
+  // Returnerar resultaten till QA-systemet
+  return {
+    internalPassed,
+    internalFailed,
+    externalPassed,
+    externalFailed,
+  };
 }

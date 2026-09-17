@@ -1,10 +1,19 @@
 import { Page } from "@playwright/test";
 
 // Kontrollerar att bilder på webbplatsen fungerar
-export async function checkImages(page: Page, pages: string[]) {
+export async function checkImages(
+  page: Page,
+  pages: string[]
+) {
 
   // Håller koll på bilder som redan har kontrollerats
   const checkedImages = new Set<string>();
+
+  // Räknar fungerande bilder
+  let passed = 0;
+
+  // Räknar bilder som inte fungerar
+  let failed = 0;
 
   // Går igenom alla sidor på webbplatsen
   for (const pageUrl of pages) {
@@ -13,8 +22,11 @@ export async function checkImages(page: Page, pages: string[]) {
     await page.goto(pageUrl);
 
     // Hämtar alla bilder på sidan
-    const imageUrls = await page.locator("img[src]").evaluateAll((elements) =>
-      elements.map((element) => (element as HTMLImageElement).src)
+    const imageUrls = await page.locator("img[src]").evaluateAll(
+      (elements) =>
+        elements.map(
+          (element) => (element as HTMLImageElement).src
+        )
     );
 
     // Tar bort duplicerade bilder
@@ -41,16 +53,43 @@ export async function checkImages(page: Page, pages: string[]) {
 
         // Kontrollerar om bilden fungerar
         if (status >= 200 && status < 400) {
-          console.log(`✓ ${imageUrl} - ${status}`);
+
+          passed++;
+
+          console.log(
+            `✓ ${imageUrl} - ${status}`
+          );
+
         } else {
-          console.log(`✗ ${imageUrl} - ${status}`);
+
+          failed++;
+
+          console.log(
+            `✗ ${imageUrl} - ${status}`
+          );
         }
 
       } catch {
 
-        // Visar fel om bilden inte kunde laddas
-        console.log(`✗ ${imageUrl} - Request failed`);
+        failed++;
+
+        console.log(
+          `✗ ${imageUrl} - Request failed`
+        );
       }
     }
   }
+
+  // Visar sammanfattning
+  console.log("\nImage summary:");
+
+  console.log(
+    `Images: ${passed} passed, ${failed} failed`
+  );
+
+  // Returnerar resultatet till QA-systemet
+  return {
+    passed,
+    failed,
+  };
 }
