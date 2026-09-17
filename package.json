@@ -1,17 +1,23 @@
 {
   "name": "website-qa-system",
   "version": "1.0.0",
-  "description": "",
+  "description": "Automatiserat QA-system för webbplatser med Playwright och TypeScript",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "playwright test",
+    "qa": "tsx src/cli.ts"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/moazam33r/website-qa-system.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "qa",
+    "playwright",
+    "testing",
+    "website"
+  ],
+  "author": "Moaz Ameer",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
@@ -22,6 +28,7 @@
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.5.1",
     "ts-node": "^10.9.2",
+    "tsx": "^4.23.13",
     "typescript": "^7.0.2"
   }
 }
