@@ -284,12 +284,6 @@ if (googleMapsResult.found.length > 0) {
     results
   );
 
-  // Skriver ut den färdiga QA-rapporten
-  printQAReport(
-    url,
-    results
-  );
-
   // Returnerar grundläggande information
   return {
     url: pageResult.url,
