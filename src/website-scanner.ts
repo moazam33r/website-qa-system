@@ -2,6 +2,7 @@ import { Page } from "@playwright/test";
 import { checkCTA } from "./checks/cta";
 import { checkPages } from "./checks/pages";
 import { checkLinks } from "./checks/links";
+import { checkSocialMedia } from "./checks/social-media";
 import { checkImages } from "./checks/images";
 import { checkForms } from "./checks/forms";
 import { checkValidation } from "./checks/validation";
@@ -232,6 +233,20 @@ export async function scanWebsite(
         `${ctaResult.failed} CTA-länkar fungerar inte`,
     });
   }
+    // 8. Kontrollerar sociala medier
+  console.log("\n--- SOCIALA MEDIER ---");
+
+  const socialMediaResult = await checkSocialMedia(
+    page,
+    pages
+  );
+
+  results.push({
+    name: "Sociala medier",
+    status: "PASS",
+    message:
+      `${socialMediaResult.found.length} sociala medier hittades`,
+  });
 
   // Skriver ut den färdiga QA-rapporten
   printQAReport(
