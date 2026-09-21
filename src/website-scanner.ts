@@ -1,5 +1,5 @@
 import { Page } from "@playwright/test";
-
+import { checkCTA } from "./checks/cta";
 import { checkPages } from "./checks/pages";
 import { checkLinks } from "./checks/links";
 import { checkImages } from "./checks/images";
@@ -206,6 +206,38 @@ export async function scanWebsite(
         `${navigationResult.failed} interna navigationer fungerar inte`,
     });
   }
+    // 7. Kontrollerar CTA-knappar och länkar
+  console.log("\n--- CTA ---");
+
+  const ctaResult = await checkCTA(
+    page,
+    pages
+  );
+
+  if (ctaResult.failed === 0) {
+
+    results.push({
+      name: "CTA",
+      status: "PASS",
+      message:
+        `${ctaResult.passed} CTA-länkar fungerar`,
+    });
+
+  } else {
+
+    results.push({
+      name: "CTA",
+      status: "FAIL",
+      message:
+        `${ctaResult.failed} CTA-länkar fungerar inte`,
+    });
+  }
+
+  // Skriver ut den färdiga QA-rapporten
+  printQAReport(
+    url,
+    results
+  );
 
   // Skriver ut den färdiga QA-rapporten
   printQAReport(
