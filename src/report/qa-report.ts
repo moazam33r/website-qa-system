@@ -29,7 +29,7 @@ export function printQAReport(
 
   console.log("\n");
   console.log("========================================");
-  console.log("           WEBSITE QA REPORT");
+  console.log("          WEBSITE QA SYSTEM");
   console.log("========================================");
 
   // Visar vilken webbplats som testades
@@ -37,10 +37,8 @@ export function printQAReport(
   console.log(`URL: ${url}`);
 
   console.log("\n----------------------------------------");
-  console.log("RESULTAT");
-  console.log("----------------------------------------");
 
-  // Skriver ut varje QA-kontroll
+  // Visar alla QA-kontroller
   for (const result of results) {
 
     let symbol = "✓";
