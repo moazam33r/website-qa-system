@@ -1,62 +1,147 @@
 import readline from "readline";
 import { chromium } from "@playwright/test";
+
 import { scanWebsite } from "./website-scanner";
+import { importWebsitesFromCSV } from "./checks/csv-import";
 
-// Skapar terminalen där användaren skriver in URL
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
+const csvFile = process.argv[2];
 
-// Visar programmets start
-console.log("\n========================================");
-console.log("          WEBSITE QA SYSTEM");
-console.log("========================================\n");
+async function runQA() {
 
-// Frågar efter webbplatsens URL
-rl.question("Ange webbplats:\n> ", async (url) => {
+  // Om en CSV-fil anges
+  if (csvFile) {
 
-  // Tar bort mellanslag
-  const websiteUrl = url.trim();
+    console.log("\n========================================");
+    console.log("          WEBSITE QA SYSTEM");
+    console.log("========================================");
 
-  // Kontrollerar att en URL angavs
-  if (!websiteUrl) {
-    console.log("\nIngen URL angavs.");
-    rl.close();
+    console.log(`\nCSV-fil: ${csvFile}`);
+
+    try {
+
+      const websites =
+        importWebsitesFromCSV(csvFile);
+
+      if (websites.length === 0) {
+        console.log("\nIngen webbplats hittades i CSV-filen.");
+        return;
+      }
+
+      const browser =
+        await chromium.launch();
+
+      for (const website of websites) {
+
+        console.log("\n========================================");
+        console.log(`TESTAR: ${website}`);
+        console.log("========================================");
+
+        const page =
+          await browser.newPage();
+
+        try {
+
+          await scanWebsite(
+            page,
+            website
+          );
+
+        } catch (error) {
+
+          console.error(
+            `\nQA-test misslyckades för ${website}`
+          );
+
+          console.error(error);
+
+        } finally {
+
+          await page.close();
+        }
+      }
+
+      await browser.close();
+
+    } catch (error) {
+
+      console.error(
+        "\nCSV-skanningen kunde inte genomföras."
+      );
+
+      console.error(error);
+    }
+
     return;
   }
 
-  console.log("\n----------------------------------------");
-  console.log("Startar QA-skanning...");
-  console.log("----------------------------------------\n");
+  // Om ingen CSV-fil anges
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
 
-  try {
+  console.log("\n========================================");
+  console.log("          WEBSITE QA SYSTEM");
+  console.log("========================================\n");
 
-    // Startar webbläsaren
-    const browser = await chromium.launch();
+  rl.question(
+    "Ange webbplats:\n> ",
+    async (url) => {
 
-    // Skapar en ny sida
-    const page = await browser.newPage();
+      const websiteUrl =
+        url.trim();
 
-    // Kör hela QA-systemet
-    await scanWebsite(
-      page,
-      websiteUrl
-    );
+      if (!websiteUrl) {
 
-    // Stänger webbläsaren
-    await browser.close();
+        console.log(
+          "\nIngen URL angavs."
+        );
 
-  } catch (error) {
+        rl.close();
+        return;
+      }
 
-    // Visar fel om något går fel
-    console.error("\nQA-skanningen kunde inte genomföras.");
+      console.log(
+        "\n----------------------------------------"
+      );
 
-    console.error(error);
+      console.log(
+        "Startar QA-skanning..."
+      );
 
-  } finally {
+      console.log(
+        "----------------------------------------\n"
+      );
 
-    // Stänger terminalen
-    rl.close();
-  }
-});
+      try {
+
+        const browser =
+          await chromium.launch();
+
+        const page =
+          await browser.newPage();
+
+        await scanWebsite(
+          page,
+          websiteUrl
+        );
+
+        await browser.close();
+
+      } catch (error) {
+
+        console.error(
+          "\nQA-skanningen kunde inte genomföras."
+        );
+
+        console.error(error);
+
+      } finally {
+
+        rl.close();
+      }
+    }
+  );
+}
+
+runQA();
