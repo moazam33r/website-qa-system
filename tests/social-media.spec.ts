@@ -2,9 +2,8 @@ import { test, expect } from "@playwright/test";
 
 import { checkSocialMedia } from "../src/checks/social-media";
 
-test("Social media-test hittar sociala medier", async ({ page }) => {
+test("Social media-test hittar och kontrollerar sociala medier", async ({ page }) => {
 
-  // Skapar en testsida med sociala medier-länkar
   await page.route(
     "https://qa-test.local/",
     async (route) => {
@@ -13,23 +12,27 @@ test("Social media-test hittar sociala medier", async ({ page }) => {
         status: 200,
         contentType: "text/html",
         body: `
-          <html>
+            <html>
+                <head>
+                <meta charset="UTF-8">
+                <title>Test Företag</title>
+            </head>
+
             <body>
 
-              <a href="https://facebook.com/test">
+              <!-- Konto som matchar företaget -->
+              <a href="https://facebook.com/testforetag">
                 Facebook
               </a>
 
-              <a href="https://instagram.com/test">
+              <!-- Konto som INTE matchar företaget -->
+              <a href="https://instagram.com/heltannatforetag">
                 Instagram
               </a>
 
-              <a href="https://linkedin.com/company/test">
+              <!-- Konto som matchar företaget -->
+              <a href="https://linkedin.com/company/testforetag">
                 LinkedIn
-              </a>
-
-              <a href="/kontakt/">
-                Kontakt
               </a>
 
             </body>
@@ -39,11 +42,14 @@ test("Social media-test hittar sociala medier", async ({ page }) => {
     }
   );
 
-  // Kör kontrollen
   const result = await checkSocialMedia(
     page,
-    ["https://qa-test.local/"]
+    ["https://qa-test.local/"],
+    "https://qa-test.local/"
   );
+
+  // Kontrollerar att tre sociala medier hittades
+  expect(result.found).toHaveLength(3);
 
   // Facebook ska hittas
   expect(
@@ -66,13 +72,12 @@ test("Social media-test hittar sociala medier", async ({ page }) => {
     )
   ).toBe(true);
 
-  // En vanlig kontaktlänk ska inte räknas
+  // Instagram ska identifieras som ett konto
+  // som inte matchar företaget
   expect(
-    result.found.some(
-      (item) => item.platform === "Kontakt"
+    result.failed.some(
+      (item) => item.platform === "Instagram"
     )
-  ).toBe(false);
+  ).toBe(true);
 
-  // Totalt tre sociala medier ska hittas
-  expect(result.found).toHaveLength(3);
 });

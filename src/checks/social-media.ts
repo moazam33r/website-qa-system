@@ -3,7 +3,8 @@ import { Page } from "@playwright/test";
 // Kontrollerar länkar till sociala medier
 export async function checkSocialMedia(
   page: Page,
-  pages: string[]
+  pages: string[],
+  websiteUrl: string
 ) {
 
   // Plattformar vi letar efter
@@ -37,7 +38,25 @@ export async function checkSocialMedia(
   // Sparar hittade sociala medier
   const found = new Map<string, string>();
 
+  // Sparar sociala medier som inte verkar tillhöra företaget
+  const failed: {
+    platform: string;
+    url: string;
+    message: string;
+  }[] = [];
+
   console.log("\nSocial media check:");
+
+  // Hämtar webbplatsens domän
+  const websiteDomain =
+    new URL(websiteUrl).hostname
+      .replace(/^www\./, "")
+      .toLowerCase();
+
+  const domainName =
+    websiteDomain
+      .split(".")[0]
+      .toLowerCase();
 
   // Hittar sociala medier i text eller HTML
   const findSocialMedia = (
@@ -76,14 +95,14 @@ export async function checkSocialMedia(
     }
   };
 
-  // Lyssnar efter Trustindex data
+  // Lyssnar efter Trustindex-data
   page.on("response", async (response) => {
 
-    const url = response.url();
+    const responseUrl = response.url();
 
     if (
-      url.includes("trustindex.io/widgets/") &&
-      url.includes("data.json")
+      responseUrl.includes("trustindex.io/widgets/") &&
+      responseUrl.includes("data.json")
     ) {
 
       try {
@@ -93,7 +112,6 @@ export async function checkSocialMedia(
 
         const data = JSON.parse(content);
 
-        // Kontrollerar Trustindex sources
         if (data.sources) {
 
           for (const sourceKey of Object.keys(
@@ -194,28 +212,132 @@ export async function checkSocialMedia(
     await page.waitForTimeout(1500);
   }
 
-  // Visar resultatet
+  // Hämtar webbplatsens titel efter att sidan har laddats
+  const websiteTitle =
+    await page.title();
+
+  const companyName =
+    websiteTitle
+      .split("|")[0]
+      .trim()
+      .toLowerCase();
+
+  // Kontrollerar om de hittade kontona verkar
+  // höra ihop med webbplatsen
+  for (const [
+    platform,
+    socialUrl
+  ] of found) {
+
+    try {
+
+      const socialUrlObject =
+        new URL(socialUrl);
+
+      let username =
+  socialUrlObject.pathname
+    .replace(/^\/+/, "")
+    .split("/")
+    .filter(Boolean)
+    .pop()
+    ?.toLowerCase() ?? "";
+
+     const normalizedCompanyName =
+  companyName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+      const normalizedUsername =
+        username
+          .replace(/[^a-z0-9]/g, "");
+
+      const normalizedDomain =
+        domainName
+          .replace(/[^a-z0-9]/g, "");
+
+     const matchesCompany =
+  normalizedCompanyName.length > 0 &&
+  (
+    normalizedUsername.includes(
+      normalizedCompanyName
+    ) ||
+    normalizedCompanyName.includes(
+      normalizedUsername
+    )
+  );
+
+const matchesDomain =
+  normalizedDomain.length > 0 &&
+  (
+    normalizedUsername.includes(
+      normalizedDomain
+    ) ||
+    normalizedDomain.includes(
+      normalizedUsername
+    )
+  );
+
+      const matches =
+        matchesCompany ||
+        matchesDomain;
+
+      if (!matches) {
+
+        failed.push({
+          platform,
+          url: socialUrl,
+          message:
+            `Kontot verkar inte matcha företaget ${companyName}`,
+        });
+
+        console.log(
+          `✗ ${platform}: ${socialUrl}`
+        );
+
+        console.log(
+          `  Kontot verkar inte tillhöra företaget ${companyName}`
+        );
+
+      } else {
+
+        console.log(
+          `✓ ${platform}: ${socialUrl}`
+        );
+
+        console.log(
+          `  ✓ Kontot matchar företaget`
+        );
+      }
+
+    } catch {
+
+      failed.push({
+        platform,
+        url: socialUrl,
+        message:
+          `Kunde inte kontrollera sociala mediet: ${socialUrl}`,
+      });
+
+      console.log(
+        `✗ ${platform}: kunde inte verifieras`
+      );
+    }
+  }
+
   if (found.size === 0) {
 
     console.log(
       "Inga sociala medier hittades."
     );
-
-  } else {
-
-    for (const [
-      platform,
-      link
-    ] of found) {
-
-      console.log(
-        `✓ ${platform}: ${link}`
-      );
-    }
   }
 
   console.log(
     `\nSociala medier: ${found.size} hittades`
+  );
+
+  console.log(
+    `Sociala medier som inte matchar: ${failed.length}`
   );
 
   return {
@@ -225,5 +347,7 @@ export async function checkSocialMedia(
         url,
       })
     ),
+
+    failed,
   };
 }

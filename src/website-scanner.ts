@@ -1,4 +1,5 @@
 import { Page } from "@playwright/test";
+
 import { checkCTA } from "./checks/cta";
 import { checkPages } from "./checks/pages";
 import { checkLinks } from "./checks/links";
@@ -49,7 +50,8 @@ export async function scanWebsite(
     results.push({
       name: "Sidor",
       status: "PASS",
-      message: `${pageResult.passedPages}/${pageResult.pages.length} sidor fungerar`,
+      message:
+        `${pageResult.passedPages}/${pageResult.pages.length} sidor fungerar`,
     });
 
   } else {
@@ -57,7 +59,8 @@ export async function scanWebsite(
     results.push({
       name: "Sidor",
       status: "FAIL",
-      message: `${pageResult.failedPages} sidor fungerar inte`,
+      message:
+        `${pageResult.failedPages} sidor fungerar inte`,
     });
   }
 
@@ -70,7 +73,6 @@ export async function scanWebsite(
     pages
   );
 
-  // Kontrollerar resultatet för länkar
   const totalLinkFailures =
     linkResult.internalFailed +
     linkResult.externalFailed;
@@ -86,7 +88,8 @@ export async function scanWebsite(
     results.push({
       name: "Länkar",
       status: "PASS",
-      message: `${totalLinks} länkar fungerar`,
+      message:
+        `${totalLinks} länkar fungerar`,
     });
 
   } else {
@@ -94,7 +97,8 @@ export async function scanWebsite(
     results.push({
       name: "Länkar",
       status: "FAIL",
-      message: `${totalLinkFailures} länkar fungerar inte`,
+      message:
+        `${totalLinkFailures} länkar fungerar inte`,
     });
   }
 
@@ -106,13 +110,13 @@ export async function scanWebsite(
     pages
   );
 
-  // Kontrollerar resultatet för bilder
   if (imageResult.failed === 0) {
 
     results.push({
       name: "Bilder",
       status: "PASS",
-      message: `${imageResult.passed} bilder fungerar`,
+      message:
+        `${imageResult.passed} bilder fungerar`,
     });
 
   } else {
@@ -120,7 +124,8 @@ export async function scanWebsite(
     results.push({
       name: "Bilder",
       status: "FAIL",
-      message: `${imageResult.failed} bilder fungerar inte`,
+      message:
+        `${imageResult.failed} bilder fungerar inte`,
     });
   }
 
@@ -132,7 +137,6 @@ export async function scanWebsite(
     pages
   );
 
-  // Formulär är inte ett fel om webbplatsen saknar formulär
   results.push({
     name: "Formulär",
     status: "PASS",
@@ -150,7 +154,6 @@ export async function scanWebsite(
     pages
   );
 
-  // E-postvalidering har fel
   if (validationResult.emailFailed > 0) {
 
     results.push({
@@ -160,7 +163,6 @@ export async function scanWebsite(
         `${validationResult.emailFailed} e-postfält accepterar ogiltig e-post`,
     });
 
-  // Telefonvalidering saknas
   } else if (validationResult.phoneFailed > 0) {
 
     results.push({
@@ -170,13 +172,13 @@ export async function scanWebsite(
         `${validationResult.phoneFailed} telefonfält saknar client-side validering`,
     });
 
-  // Alla valideringar fungerar
   } else {
 
     results.push({
       name: "Validering",
       status: "PASS",
-      message: "Formulärvalidering fungerar",
+      message:
+        "Formulärvalidering fungerar",
     });
   }
 
@@ -189,7 +191,6 @@ export async function scanWebsite(
     pages
   );
 
-  // Kontrollerar resultatet för navigation
   if (navigationResult.failed === 0) {
 
     results.push({
@@ -208,7 +209,8 @@ export async function scanWebsite(
         `${navigationResult.failed} interna navigationer fungerar inte`,
     });
   }
-    // 7. Kontrollerar CTA-knappar och länkar
+
+  // 7. Kontrollerar CTA-knappar och länkar
   console.log("\n--- CTA ---");
 
   const ctaResult = await checkCTA(
@@ -234,49 +236,63 @@ export async function scanWebsite(
         `${ctaResult.failed} CTA-länkar fungerar inte`,
     });
   }
-    // 8. Kontrollerar sociala medier
+
+  // 8. Kontrollerar sociala medier
   console.log("\n--- SOCIALA MEDIER ---");
 
-  const socialMediaResult = await checkSocialMedia(
-    page,
-    pages
-  );
+  const socialMediaResult =
+    await checkSocialMedia(
+      page,
+      pages,
+      url
+    );
 
-  results.push({
-    name: "Sociala medier",
-    status: "PASS",
-    message:
-      `${socialMediaResult.found.length} sociala medier hittades`,
-  });
+  if (socialMediaResult.failed.length > 0) {
+
+    results.push({
+      name: "Sociala medier",
+      status: "FAIL",
+      message:
+        `${socialMediaResult.failed} sociala medier verkar inte tillhöra företaget`,
+    });
+
+  } else {
+
+    results.push({
+      name: "Sociala medier",
+      status: "PASS",
+      message:
+        `${socialMediaResult.found.length} sociala medier hittades och matchar webbplatsen`,
+    });
+  }
+
   // 9. Kontrollerar Google Maps
-console.log("\n--- GOOGLE MAPS ---");
+  console.log("\n--- GOOGLE MAPS ---");
 
-// Kör kontrollen för alla sidor på webbplatsen
-const googleMapsResult = await checkGoogleMaps(
-  page,
-  pages
-);
+  const googleMapsResult =
+    await checkGoogleMaps(
+      page,
+      pages
+    );
 
-// Om en Google Maps-länk hittades
-if (googleMapsResult.found.length > 0) {
+  if (googleMapsResult.found.length > 0) {
 
-  results.push({
-    name: "Google Maps",
-    status: "PASS",
-    message:
-      `${googleMapsResult.found.length} Google Maps-länkar hittades`,
-  });
+    results.push({
+      name: "Google Maps",
+      status: "PASS",
+      message:
+        `${googleMapsResult.found.length} Google Maps-länkar hittades`,
+    });
 
-// Om ingen Google Maps-länk hittades
-} else {
+  } else {
 
-  results.push({
-    name: "Google Maps",
-    status: "WARNING",
-    message:
-      "Ingen Google Maps-länk hittades",
-  });
-}
+    results.push({
+      name: "Google Maps",
+      status: "WARNING",
+      message:
+        "Ingen Google Maps-länk hittades",
+    });
+  }
 
   // Skriver ut den färdiga QA-rapporten
   printQAReport(
