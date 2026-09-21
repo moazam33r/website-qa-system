@@ -7,6 +7,7 @@ import { checkImages } from "./checks/images";
 import { checkForms } from "./checks/forms";
 import { checkValidation } from "./checks/validation";
 import { checkNavigation } from "./checks/navigation";
+import { checkGoogleMaps } from "./checks/google-maps";
 
 import {
   printQAReport,
@@ -247,6 +248,35 @@ export async function scanWebsite(
     message:
       `${socialMediaResult.found.length} sociala medier hittades`,
   });
+  // 9. Kontrollerar Google Maps
+console.log("\n--- GOOGLE MAPS ---");
+
+// Kör kontrollen för alla sidor på webbplatsen
+const googleMapsResult = await checkGoogleMaps(
+  page,
+  pages
+);
+
+// Om en Google Maps-länk hittades
+if (googleMapsResult.found.length > 0) {
+
+  results.push({
+    name: "Google Maps",
+    status: "PASS",
+    message:
+      `${googleMapsResult.found.length} Google Maps-länkar hittades`,
+  });
+
+// Om ingen Google Maps-länk hittades
+} else {
+
+  results.push({
+    name: "Google Maps",
+    status: "WARNING",
+    message:
+      "Ingen Google Maps-länk hittades",
+  });
+}
 
   // Skriver ut den färdiga QA-rapporten
   printQAReport(
