@@ -1,16 +1,14 @@
 import { test, expect } from "@playwright/test";
+import fs from "fs";
 
 import { checkGoogleBusinessProfile } from "../src/checks/google-business-profile";
 
-// Testar att systemet hittar en Google Business Profile
-// och att företagsnamnet matchar webbplatsens företag
-test("Google Business Profile matchar rätt företag", async ({ page }) => {
+test("Google Business Profile och Google Maps matchar rätt företag", async ({ page }) => {
 
   // Mockad testsida
   await page.route(
     "https://qa-test.local/",
     async (route) => {
-
       await route.fulfill({
         status: 200,
         contentType: "text/html; charset=utf-8",
@@ -28,11 +26,14 @@ test("Google Business Profile matchar rätt företag", async ({ page }) => {
                 Google Business Profile
               </a>
 
+              <iframe
+                src="https://www.google.com/maps/embed?pb=Test-Foretag"
+              ></iframe>
+
             </body>
           </html>
         `,
       });
-
     }
   );
 
@@ -40,7 +41,6 @@ test("Google Business Profile matchar rätt företag", async ({ page }) => {
   await page.route(
     "https://www.google.com/maps/place/Test-Foretag",
     async (route) => {
-
       await route.fulfill({
         status: 200,
         contentType: "text/html; charset=utf-8",
@@ -64,7 +64,6 @@ test("Google Business Profile matchar rätt företag", async ({ page }) => {
           </html>
         `,
       });
-
     }
   );
 
@@ -75,10 +74,23 @@ test("Google Business Profile matchar rätt företag", async ({ page }) => {
       ["https://qa-test.local/"]
     );
 
-  // Kontrollerar att en Google-profil hittades
+  // En riktig Business Profile ska hittas
   expect(result.found).toHaveLength(1);
 
-  // Kontrollerar att företaget matchar Google-profilen
+  // Företaget ska matcha profilen
   expect(result.failed).toHaveLength(0);
 
+  // Google Maps ska också matcha företaget
+  expect(result.mapsMatches).toHaveLength(1);
+
+  expect(
+    result.mapsMatches[0].companyName
+  ).toBe("Test Företag");
+
+  // Screenshot ska ha skapats
+  expect(result.screenshots).toHaveLength(1);
+
+  expect(
+    fs.existsSync(result.screenshots[0].path)
+  ).toBe(true);
 });

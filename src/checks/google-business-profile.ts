@@ -1,7 +1,9 @@
 import { Page } from "@playwright/test";
+import fs from "fs";
+import path from "path";
 
-// Kontrollerar om webbplatsen innehåller en Google Business Profile
-// och om profilen verkar tillhöra rätt företag
+// Kontrollerar Google Maps och Google Business Profile
+// och försöker koppla informationen till företaget.
 export async function checkGoogleBusinessProfile(
   page: Page,
   pages: string[]
@@ -14,19 +16,55 @@ export async function checkGoogleBusinessProfile(
     message: string;
   }[] = [];
 
-  // Öppnar startsidan
+  const screenshots: {
+    url: string;
+    path: string;
+  }[] = [];
+
+  const mapsMatches: {
+    url: string;
+    companyName: string;
+  }[] = [];
+
+  if (pages.length === 0) {
+    return {
+      found: [],
+      failed,
+      screenshots,
+      mapsMatches,
+    };
+  }
+
+  // --------------------------------------------------
+  // NORMALISERING
+  // --------------------------------------------------
+
+  function normalizeName(name: string) {
+    return name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/aktiebolag/g, "")
+      .replace(/\bab\b/g, "")
+      .replace(/\bsverige\b/g, "")
+      .replace(/[^a-z0-9]/g, "")
+      .trim();
+  }
+
+  // --------------------------------------------------
+  // HÄMTAR FÖRETAGSNAMN
+  // --------------------------------------------------
+
   await page.goto(pages[0], {
     waitUntil: "domcontentloaded",
   });
 
-  // Sparar möjliga företagsnamn
   const companyNames: string[] = [];
 
-  // Hämtar företagsnamn från JSON-LD
-  const jsonLdScripts =
-    await page.locator(
-      'script[type="application/ld+json"]'
-    ).allTextContents();
+  // JSON-LD
+  const jsonLdScripts = await page
+    .locator('script[type="application/ld+json"]')
+    .allTextContents();
 
   for (const scriptText of jsonLdScripts) {
 
@@ -45,10 +83,12 @@ export async function checkGoogleBusinessProfile(
           typeof object === "object" &&
           typeof object.name === "string"
         ) {
-          companyNames.push(object.name.trim());
+          companyNames.push(
+            object.name.trim()
+          );
         }
 
-        // Kontrollerar objekt i @graph
+        // @graph
         if (
           object &&
           typeof object === "object" &&
@@ -62,6 +102,7 @@ export async function checkGoogleBusinessProfile(
               typeof graphObject === "object" &&
               typeof graphObject.name === "string"
             ) {
+
               companyNames.push(
                 graphObject.name.trim()
               );
@@ -75,7 +116,7 @@ export async function checkGoogleBusinessProfile(
     }
   }
 
-  // Hämtar namn från sidans titel
+  // Sidtitel
   const title = await page.title();
 
   if (title) {
@@ -90,45 +131,51 @@ export async function checkGoogleBusinessProfile(
     );
   }
 
-  // Hämtar namn från footer
+  // Footer
   const footerTexts =
     await page.locator("footer").allInnerTexts();
 
   for (const footerText of footerTexts) {
 
-    const copyrightMatches =
-      footerText.match(/©\s*([^\n]+)/gi);
+    const lines = footerText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
 
-    if (copyrightMatches) {
+    for (const line of lines) {
 
-      for (const match of copyrightMatches) {
+      if (line.includes("©")) {
 
-        const name = match
-          .replace(/^©\s*/i, "")
+        const cleaned = line
+          .replace(/©/g, "")
           .trim();
 
-        if (name) {
-          companyNames.push(name);
+        if (cleaned.length > 2) {
+          companyNames.push(cleaned);
         }
       }
     }
   }
 
-  // Hämtar möjliga företagsnamn från logotypens alt-text
+  // Logotyp
   const logoTexts =
-    await page.locator("img[alt]").evaluateAll(
-      (images) =>
-        images
-          .map(
-            (image) =>
-              (image as HTMLImageElement).alt.trim()
-          )
-          .filter(
-            (alt) =>
-              alt &&
-              /logo|logotyp/i.test(alt)
-          )
-    );
+    await page
+      .locator("img[alt]")
+      .evaluateAll(
+        (images) =>
+          images
+            .map(
+              (image) =>
+                (image as HTMLImageElement)
+                  .alt
+                  .trim()
+            )
+            .filter(
+              (alt) =>
+                alt &&
+                /logo|logotyp/i.test(alt)
+            )
+      );
 
   companyNames.push(
     ...logoTexts
@@ -142,7 +189,7 @@ export async function checkGoogleBusinessProfile(
         .filter(
           (name) => name.length > 2
         )
-    )
+    ),
   ];
 
   console.log(
@@ -153,20 +200,6 @@ export async function checkGoogleBusinessProfile(
     console.log(`- ${name}`);
   }
 
-  // Gör namn enklare att jämföra
-  function normalizeName(name: string) {
-
-    return name
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/aktiebolag/g, "")
-      .replace(/\bab\b/g, "")
-      .replace(/\bsverige\b/g, "")
-      .replace(/[^a-z0-9]/g, "")
-      .trim();
-  }
-
   const normalizedCompanyNames =
     uniqueCompanyNames
       .map(normalizeName)
@@ -174,110 +207,269 @@ export async function checkGoogleBusinessProfile(
         (name) => name.length > 3
       );
 
-  // Går igenom alla hittade sidor
+  // --------------------------------------------------
+  // GOOGLE-LÄNKAR
+  // --------------------------------------------------
+
+  const googleProfileCandidates =
+    new Set<string>();
+
+  const googleMapsEmbeds =
+    new Set<string>();
+
+  // Går igenom alla sidor
   for (const pageUrl of pages) {
 
     await page.goto(pageUrl, {
       waitUntil: "networkidle",
     });
 
+    // Vanliga länkar
     const links =
-      await page.locator("a[href]").evaluateAll(
-        (elements) =>
-          elements.map(
-            (element) =>
-              (element as HTMLAnchorElement).href || ""
-          )
-      );
+      await page
+        .locator("a[href]")
+        .evaluateAll(
+          (elements) =>
+            elements
+              .map(
+                (element) =>
+                  (element as HTMLAnchorElement)
+                    .href || ""
+              )
+              .filter(Boolean)
+        );
 
-    // Letar efter Google Business Profile
     for (const link of links) {
 
       const lowerLink =
         link.toLowerCase();
-
-      // Google Maps embed är inte en Business Profile
-      if (
-        lowerLink.includes(
-          "google.com/maps/embed"
-        ) ||
-        lowerLink.includes(
-          "maps.google.com/maps/embed"
-        )
-      ) {
-        continue;
-      }
 
       if (
         lowerLink.includes(
           "google.com/maps/place"
         ) ||
         lowerLink.includes(
-          "maps.google.com"
+          "google.se/maps/place"
         ) ||
         lowerLink.includes(
-          "google.se/maps"
+          "maps.google.com/maps/place"
         ) ||
         lowerLink.includes(
           "maps.app.goo.gl"
         )
       ) {
 
-        found.add(link);
+        googleProfileCandidates.add(
+          link
+        );
+      }
+    }
 
-        console.log(
-          `Google-profil hittad: ${link}`
+    // Google Maps iframe
+    const iframeSources =
+      await page
+        .locator("iframe[src]")
+        .evaluateAll(
+          (iframes) =>
+            iframes
+              .map(
+                (iframe) =>
+                  (iframe as HTMLIFrameElement)
+                    .src || ""
+              )
+              .filter(Boolean)
+        );
+
+    for (const iframeSrc of iframeSources) {
+
+      const lowerIframe =
+        iframeSrc.toLowerCase();
+
+      if (
+        lowerIframe.includes(
+          "google.com/maps"
+        ) ||
+        lowerIframe.includes(
+          "maps.google.com"
+        ) ||
+        lowerIframe.includes(
+          "google.se/maps"
+        )
+      ) {
+
+        googleMapsEmbeds.add(
+          iframeSrc
         );
       }
     }
   }
 
-  // Ingen profil hittades
-  if (found.size === 0) {
+  // --------------------------------------------------
+  // GOOGLE MAPS
+  // --------------------------------------------------
+
+  if (googleMapsEmbeds.size > 0) {
 
     console.log(
-      "✗ Ingen Google Business Profile hittades."
+      `\nGoogle Maps embeds: ${googleMapsEmbeds.size}`
+    );
+
+    for (const embed of googleMapsEmbeds) {
+
+      console.log(
+        `Google Maps URL: ${embed}`
+      );
+
+      let decodedEmbed = embed;
+
+      try {
+        decodedEmbed =
+          decodeURIComponent(embed);
+      } catch {
+        // Behåller original-URL
+      }
+
+      const normalizedEmbed =
+        normalizeName(
+          decodedEmbed
+        );
+
+      let matchedName:
+        | string
+        | undefined;
+
+      // Försöker matcha företagsnamnet
+      for (
+        let i = 0;
+        i < normalizedCompanyNames.length;
+        i++
+      ) {
+
+        const companyName =
+          normalizedCompanyNames[i];
+
+        if (!companyName) {
+          continue;
+        }
+
+        if (
+          normalizedEmbed.includes(
+            companyName
+          )
+        ) {
+
+          matchedName =
+            uniqueCompanyNames[i];
+
+          break;
+        }
+      }
+
+      if (matchedName) {
+
+        mapsMatches.push({
+          url: embed,
+          companyName: matchedName,
+        });
+
+        console.log(
+          `✓ Google Maps matchar företaget: ${matchedName}`
+        );
+
+      } else {
+
+        console.log(
+          "⚠ Google Maps hittades men företagsnamnet kunde inte bekräftas."
+        );
+      }
+    }
+
+  } else {
+
+    console.log(
+      "\nIngen Google Maps embed hittades."
+    );
+  }
+
+  // --------------------------------------------------
+  // DIREKTA GOOGLE BUSINESS PROFILE-LÄNKAR
+  // --------------------------------------------------
+
+  if (
+    googleProfileCandidates.size === 0
+  ) {
+
+    console.log(
+      "\n⚠ Ingen direkt Google Business Profile-länk hittades på webbplatsen."
     );
 
   } else {
 
-    // Kontrollerar varje hittad profil
-    for (const profile of found) {
+    console.log(
+      `\nGoogle Business Profile-kandidater: ${googleProfileCandidates.size}`
+    );
+
+    for (
+      const profile
+      of googleProfileCandidates
+    ) {
 
       try {
 
         await page.goto(profile, {
           waitUntil: "domcontentloaded",
-          timeout: 15000,
+          timeout: 20000,
         });
 
-        // Hämtar den slutliga URL:en efter eventuell redirect
-        const finalUrl = page.url();
+        const finalUrl =
+          page.url();
 
         console.log(
-          `Google slutlig URL: ${finalUrl}`
+          `Google-profil URL: ${finalUrl}`
         );
 
-        const googleText =
-          await page.locator("body").innerText();
+        let googleText = "";
 
-        // Avkodar Google URL
-        // Exempel: Digital%2BKontakt -> Digital+Kontakt
-        // och sedan Digital+Kontakt -> Digital Kontakt
-        const decodedUrl =
-          decodeURIComponent(finalUrl)
-            .replace(/\+/g, " ");
+        try {
 
-        // Kontrollerar både Google URL och sidans text
+          googleText =
+            await page
+              .locator("body")
+              .innerText();
+
+        } catch {
+
+          googleText = "";
+        }
+
+        // URL + sidans text
+        let decodedUrl =
+          finalUrl;
+
+        try {
+
+          decodedUrl =
+            decodeURIComponent(
+              finalUrl
+            );
+
+        } catch {
+          // Behåller original
+        }
+
         const googleContent =
           `${decodedUrl} ${googleText}`;
 
         const normalizedGoogleContent =
-          normalizeName(googleContent);
+          normalizeName(
+            googleContent
+          );
 
-        let matchedName: string | undefined;
+        let matchedName:
+          | string
+          | undefined;
 
-        // Försöker hitta direkt matchning
+        // Direkt matchning
         for (
           let i = 0;
           i < normalizedCompanyNames.length;
@@ -287,7 +479,9 @@ export async function checkGoogleBusinessProfile(
           const companyName =
             normalizedCompanyNames[i];
 
-          if (!companyName) continue;
+          if (!companyName) {
+            continue;
+          }
 
           if (
             normalizedGoogleContent.includes(
@@ -302,8 +496,7 @@ export async function checkGoogleBusinessProfile(
           }
         }
 
-        // Om direkt matchning inte fungerar
-        // kontrolleras viktiga ord från företagsnamnet
+        // Matchning med viktiga ord
         if (!matchedName) {
 
           for (
@@ -320,20 +513,27 @@ export async function checkGoogleBusinessProfile(
                 /[a-z0-9]{3,}/g
               );
 
-            if (!words) continue;
+            if (!words) {
+              continue;
+            }
+
+            const ignoredWords = [
+              "sverige",
+              "aktiebolag",
+              "ab",
+              "for",
+              "och",
+              "webb",
+              "digitalbyra",
+              "kyltjanst",
+            ];
 
             const importantWords =
               words.filter(
                 (word) =>
-                  ![
-                    "sverige",
-                    "aktiebolag",
-                    "ab",
-                    "for",
-                    "och",
-                    "webb",
-                    "digitalbyra",
-                  ].includes(word)
+                  !ignoredWords.includes(
+                    word
+                  )
               );
 
             if (
@@ -354,22 +554,65 @@ export async function checkGoogleBusinessProfile(
           }
         }
 
+        // --------------------------------------------------
+        // RESULTAT
+        // --------------------------------------------------
+
         if (matchedName) {
+
+          found.add(profile);
 
           console.log(
             `✓ Google Business Profile matchar företaget: ${matchedName}`
           );
 
+          // Screenshot-mapp
+          const screenshotDirectory =
+            path.join(
+              "test-results",
+              "google-business-profile"
+            );
+
+          fs.mkdirSync(
+            screenshotDirectory,
+            {
+              recursive: true,
+            }
+          );
+
+          const screenshotNumber =
+            screenshots.length + 1;
+
+          const screenshotPath =
+            path.join(
+              screenshotDirectory,
+              `profile-${screenshotNumber}.png`
+            );
+
+          await page.screenshot({
+            path: screenshotPath,
+            fullPage: true,
+          });
+
+          screenshots.push({
+            url: finalUrl,
+            path: screenshotPath,
+          });
+
+          console.log(
+            `✓ Screenshot sparad: ${screenshotPath}`
+          );
+
         } else {
 
           console.log(
-            "✗ Google Business Profile verkar inte tillhöra företaget"
+            "⚠ Google-länken kunde hittas men företagsnamnet kunde inte bekräftas."
           );
 
           failed.push({
             url: profile,
             message:
-              "Inget av webbplatsens företagsnamn kunde hittas på Google-profilen",
+              "Google Business Profile hittades men företagsnamnet kunde inte bekräftas",
           });
         }
 
@@ -388,12 +631,22 @@ export async function checkGoogleBusinessProfile(
     }
   }
 
+  // --------------------------------------------------
+  // SLUTRESULTAT
+  // --------------------------------------------------
+
   console.log(
-    `\nGoogle Business Profile: ${found.size} hittades`
+    `\nGoogle Maps som matchar företaget: ${mapsMatches.length}`
+  );
+
+  console.log(
+    `Google Business Profiles verifierade: ${found.size}`
   );
 
   return {
     found: [...found],
     failed,
+    screenshots,
+    mapsMatches,
   };
 }

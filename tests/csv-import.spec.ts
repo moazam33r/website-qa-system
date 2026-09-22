@@ -11,31 +11,43 @@ https://kallsvvs.se
 https://abctakplat.se
 `;
 
-  const filePath = "test-websites.csv";
+  // Använder en separat testfil
+  const filePath = "test-results/csv-import-test.csv";
 
-  // Skapar en tillfällig CSV-fil för testet
-  fs.writeFileSync(
-    filePath,
-    csvContent
-  );
+  // Skapar mappen om den inte finns
+  fs.mkdirSync("test-results", { recursive: true });
 
-  const websites =
-    importWebsitesFromCSV(filePath);
+  try {
 
-  expect(websites).toHaveLength(3);
+    // Skapar testets egen CSV-fil
+    fs.writeFileSync(
+      filePath,
+      csvContent
+    );
 
-  expect(websites).toContain(
-    "https://digitalkontakt.se"
-  );
+    const websites =
+      importWebsitesFromCSV(filePath);
 
-  expect(websites).toContain(
-    "https://kallsvvs.se"
-  );
+    // Kontrollerar att tre webbplatser hittades
+    expect(websites).toHaveLength(3);
 
-  expect(websites).toContain(
-    "https://abctakplat.se"
-  );
+    expect(websites).toContain(
+      "https://digitalkontakt.se"
+    );
 
-  // Tar bort testfilen efter testet
-  fs.unlinkSync(filePath);
+    expect(websites).toContain(
+      "https://kallsvvs.se"
+    );
+
+    expect(websites).toContain(
+      "https://abctakplat.se"
+    );
+
+  } finally {
+
+    // Tar bara bort testets egen CSV-fil
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
 });

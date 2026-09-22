@@ -312,7 +312,7 @@ export async function scanWebsite(
       name: "Google Business Profile",
       status: "FAIL",
       message:
-        `${googleBusinessProfileResult.failed.length} Google-profiler verkar inte tillhöra företaget`,
+        `${googleBusinessProfileResult.failed.length} Google-profiler kunde inte bekräftas`,
     });
 
   } else if (
@@ -326,13 +326,24 @@ export async function scanWebsite(
         `${googleBusinessProfileResult.found.length} Google-profiler hittades och matchar företaget`,
     });
 
+  } else if (
+    googleBusinessProfileResult.mapsMatches.length > 0
+  ) {
+
+    results.push({
+      name: "Google Business Profile",
+      status: "WARNING",
+      message:
+        `Google Maps matchar företaget, men ingen direkt Business Profile-länk hittades`,
+    });
+
   } else {
 
     results.push({
       name: "Google Business Profile",
       status: "WARNING",
       message:
-        "Ingen Google Business Profile hittades",
+        "Ingen direkt Google Business Profile-länk kunde verifieras",
     });
   }
 
