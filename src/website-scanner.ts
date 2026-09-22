@@ -9,6 +9,7 @@ import { checkForms } from "./checks/forms";
 import { checkValidation } from "./checks/validation";
 import { checkNavigation } from "./checks/navigation";
 import { checkGoogleMaps } from "./checks/google-maps";
+import { checkGoogleBusinessProfile } from "./checks/google-business-profile";
 
 import {
   printQAReport,
@@ -253,7 +254,7 @@ export async function scanWebsite(
       name: "Sociala medier",
       status: "FAIL",
       message:
-        `${socialMediaResult.failed} sociala medier verkar inte tillhöra företaget`,
+        `${socialMediaResult.failed.length} sociala medier verkar inte tillhöra företaget`,
     });
 
   } else {
@@ -291,6 +292,47 @@ export async function scanWebsite(
       status: "WARNING",
       message:
         "Ingen Google Maps-länk hittades",
+    });
+  }
+
+  // 10. Kontrollerar Google Business Profile
+  console.log("\n--- GOOGLE BUSINESS PROFILE ---");
+
+  const googleBusinessProfileResult =
+    await checkGoogleBusinessProfile(
+      page,
+      pages
+    );
+
+  if (
+    googleBusinessProfileResult.failed.length > 0
+  ) {
+
+    results.push({
+      name: "Google Business Profile",
+      status: "FAIL",
+      message:
+        `${googleBusinessProfileResult.failed.length} Google-profiler verkar inte tillhöra företaget`,
+    });
+
+  } else if (
+    googleBusinessProfileResult.found.length > 0
+  ) {
+
+    results.push({
+      name: "Google Business Profile",
+      status: "PASS",
+      message:
+        `${googleBusinessProfileResult.found.length} Google-profiler hittades och matchar företaget`,
+    });
+
+  } else {
+
+    results.push({
+      name: "Google Business Profile",
+      status: "WARNING",
+      message:
+        "Ingen Google Business Profile hittades",
     });
   }
 
