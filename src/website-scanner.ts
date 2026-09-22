@@ -332,9 +332,9 @@ export async function scanWebsite(
 
     results.push({
       name: "Google Business Profile",
-      status: "WARNING",
+      status: "PASS",
       message:
-        `Google Maps matchar företaget, men ingen direkt Business Profile-länk hittades`,
+        "Google Business Profile matchar företaget via Google Maps",
     });
 
   } else {

@@ -51,6 +51,77 @@ export async function checkGoogleBusinessProfile(
       .trim();
   }
 
+  // Avkodar vanlig URL-kodning
+  function decodeGoogleMapsUrl(url: string) {
+
+    let decoded = url;
+
+    for (let i = 0; i < 3; i++) {
+
+      try {
+
+        const next =
+          decodeURIComponent(decoded);
+
+        if (next === decoded) {
+          break;
+        }
+
+        decoded = next;
+
+      } catch {
+        break;
+      }
+    }
+
+    return decoded;
+  }
+
+  // Avkodar företagsnamn som Google Maps
+  // ibland sparar som Base64 efter !2z
+  function decodeGoogleMapsCompanyName(
+    url: string
+  ) {
+
+    const decodedUrl =
+      decodeGoogleMapsUrl(url);
+
+    const matches =
+      decodedUrl.match(/!2z([^!]+)/g);
+
+    if (!matches) {
+      return "";
+    }
+
+    const decodedNames: string[] = [];
+
+    for (const match of matches) {
+
+      const encoded =
+        match.replace(/^!2z/, "");
+
+      try {
+
+        const decoded =
+          Buffer.from(
+            encoded,
+            "base64"
+          ).toString("utf8");
+
+        if (decoded.trim()) {
+          decodedNames.push(
+            decoded.trim()
+          );
+        }
+
+      } catch {
+        // Ignorerar Base64 som inte går att läsa
+      }
+    }
+
+    return decodedNames.join(" ");
+  }
+
   // --------------------------------------------------
   // HÄMTAR FÖRETAGSNAMN
   // --------------------------------------------------
@@ -83,6 +154,7 @@ export async function checkGoogleBusinessProfile(
           typeof object === "object" &&
           typeof object.name === "string"
         ) {
+
           companyNames.push(
             object.name.trim()
           );
@@ -95,7 +167,10 @@ export async function checkGoogleBusinessProfile(
           Array.isArray(object["@graph"])
         ) {
 
-          for (const graphObject of object["@graph"]) {
+          for (
+            const graphObject
+            of object["@graph"]
+          ) {
 
             if (
               graphObject &&
@@ -320,25 +395,38 @@ export async function checkGoogleBusinessProfile(
         `Google Maps URL: ${embed}`
       );
 
-      let decodedEmbed = embed;
+      // Avkodar URL
+      const decodedEmbed =
+        decodeGoogleMapsUrl(embed);
 
-      try {
-        decodedEmbed =
-          decodeURIComponent(embed);
-      } catch {
-        // Behåller original-URL
+      // Avkodar eventuellt företagsnamn
+      // från Google Maps Base64-data
+      const decodedCompanyName =
+        decodeGoogleMapsCompanyName(embed);
+
+      if (decodedCompanyName) {
+
+        console.log(
+          `Google Maps företagsnamn: ${decodedCompanyName}`
+        );
       }
+
+      const searchableEmbed =
+        `${decodedEmbed} ${decodedCompanyName}`;
 
       const normalizedEmbed =
         normalizeName(
-          decodedEmbed
+          searchableEmbed
         );
 
       let matchedName:
         | string
         | undefined;
 
-      // Försöker matcha företagsnamnet
+      // ----------------------------------------------
+      // 1. Direkt matchning
+      // ----------------------------------------------
+
       for (
         let i = 0;
         i < normalizedCompanyNames.length;
@@ -364,6 +452,70 @@ export async function checkGoogleBusinessProfile(
           break;
         }
       }
+
+      // ----------------------------------------------
+      // 2. Matchning med viktiga ord
+      // ----------------------------------------------
+
+      if (!matchedName) {
+
+        for (
+          let i = 0;
+          i < normalizedCompanyNames.length;
+          i++
+        ) {
+
+          const originalName =
+            uniqueCompanyNames[i];
+
+          const words =
+            normalizeName(originalName)
+              .match(/[a-z0-9]{3,}/g);
+
+          if (!words) {
+            continue;
+          }
+
+          const ignoredWords = [
+            "sverige",
+            "aktiebolag",
+            "ab",
+            "for",
+            "och",
+            "webb",
+            "digitalbyra",
+            "kyltjanst",
+          ];
+
+          const importantWords =
+            words.filter(
+              (word) =>
+                !ignoredWords.includes(
+                  word
+                )
+            );
+
+          if (
+            importantWords.length >= 2 &&
+            importantWords.every(
+              (word) =>
+                normalizedEmbed.includes(
+                  word
+                )
+            )
+          ) {
+
+            matchedName =
+              originalName;
+
+            break;
+          }
+        }
+      }
+
+      // ----------------------------------------------
+      // RESULTAT
+      // ----------------------------------------------
 
       if (matchedName) {
 
@@ -443,22 +595,19 @@ export async function checkGoogleBusinessProfile(
         }
 
         // URL + sidans text
-        let decodedUrl =
-          finalUrl;
+        const decodedUrl =
+          decodeGoogleMapsUrl(
+            finalUrl
+          );
 
-        try {
-
-          decodedUrl =
-            decodeURIComponent(
-              finalUrl
-            );
-
-        } catch {
-          // Behåller original
-        }
+        // Även Base64-information från URL
+        const decodedCompanyName =
+          decodeGoogleMapsCompanyName(
+            finalUrl
+          );
 
         const googleContent =
-          `${decodedUrl} ${googleText}`;
+          `${decodedUrl} ${decodedCompanyName} ${googleText}`;
 
         const normalizedGoogleContent =
           normalizeName(
