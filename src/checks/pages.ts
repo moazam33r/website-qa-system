@@ -9,8 +9,21 @@ export async function checkPages(
   // Hämtar webbplatsens domän
   const origin = new URL(url).origin;
 
+  // Normaliserar startsidan så att / och utan / räknas som samma URL
+  function normalizeUrl(rawUrl: string): string {
+    const parsedUrl = new URL(rawUrl);
+
+    parsedUrl.hash = "";
+
+    if (parsedUrl.pathname === "/") {
+      parsedUrl.pathname = "";
+    }
+
+    return parsedUrl.toString();
+  }
+
   // Kö med sidor som ska besökas
-  const pagesToVisit: string[] = [url];
+  const pagesToVisit: string[] = [normalizeUrl(url)];
 
   // Håller koll på sidor som redan har besökts
   const visitedPages = new Set<string>();
@@ -155,8 +168,13 @@ export async function checkPages(
       origin
     );
 
+    // Normaliserar URL:er
+    const normalizedLinks = links.map(
+      (link) => normalizeUrl(link)
+    );
+
     // Tar bort duplicerade länkar
-    const uniqueLinks = [...new Set(links)];
+    const uniqueLinks = [...new Set(normalizedLinks)];
 
     // Lägger till nya sidor i kön
     for (const link of uniqueLinks) {
