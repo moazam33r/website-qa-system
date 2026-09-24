@@ -160,7 +160,7 @@ export async function checkSocialMedia(
   for (const pageUrl of pages) {
 
     await page.goto(pageUrl, {
-      waitUntil: "networkidle",
+      waitUntil: "domcontentloaded",
     });
 
     // Hämtar vanliga länkar

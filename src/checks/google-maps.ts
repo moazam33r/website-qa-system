@@ -31,7 +31,12 @@ export async function checkGoogleMaps(
 
       const lowerLink = link.toLowerCase();
 
-      // Kontrollerar om länken går till Google Maps
+      // Google Maps Embed ska inte räknas som en vanlig länk
+      if (lowerLink.includes("google.com/maps/embed")) {
+        continue;
+      }
+
+      // Kontrollerar vanliga Google Maps-länkar
       if (
         lowerLink.includes("google.com/maps") ||
         lowerLink.includes("maps.google.com") ||
@@ -81,7 +86,7 @@ export async function checkGoogleMaps(
     for (const map of found) {
 
       console.log(
-        `✓ Google Maps: ${map}`
+        "✓ Google Maps iframe hittades"
       );
     }
   }

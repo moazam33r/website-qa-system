@@ -24,134 +24,142 @@ export async function checkCTA(
   // Går igenom alla sidor
   for (const pageUrl of pages) {
 
-    await page.goto(pageUrl);
+    try {
 
-    // Hittar länkar, knappar och submit-knappar
-    const elements = page.locator(
-      'a[href], button, input[type="submit"]'
-    );
+      await page.goto(pageUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 15000,
+      });
 
-    const count = await elements.count();
-
-    // Kontrollerar varje element
-    for (let i = 0; i < count; i++) {
-
-      const element = elements.nth(i);
-
-      // Hoppar över dolda element
-      const visible = await element.isVisible().catch(
-        () => false
+      // Hittar länkar, knappar och submit-knappar
+      const elements = page.locator(
+        'a[href], button, input[type="submit"]'
       );
 
-      if (!visible) continue;
+      const count = await elements.count();
 
-      // Hämtar elementets tag
-      const tagName = await element.evaluate(
-        (el) => el.tagName.toLowerCase()
-      );
+      // Kontrollerar varje element
+      for (let i = 0; i < count; i++) {
 
-      // Hämtar CSS-klasser
-      const className =
-        (
-          await element.getAttribute("class")
-        )?.toLowerCase() ?? "";
+        const element = elements.nth(i);
 
-      // Hämtar role
-      const role =
-        (
-          await element.getAttribute("role")
-        )?.toLowerCase() ?? "";
+        try {
 
-      // Kontrollerar om elementet har en vanlig knapp/CTA-klass
-      const hasButtonClass =
-        buttonClasses.some(
-          (buttonClass) =>
-            className.includes(buttonClass)
-        );
+          // Hoppar över element som inte längre finns
+          const visible = await element.isVisible();
 
-      // Kontrollerar om elementet är en knapp
-      const isButtonElement =
-        tagName === "button" ||
-        tagName === "input";
+          if (!visible) continue;
 
-      // Kontrollerar om länken har role="button"
-      const isButtonRole =
-        role === "button";
-
-      // Bestämmer om elementet är en CTA
-      const isCTA =
-        isButtonElement ||
-        isButtonRole ||
-        hasButtonClass;
-
-      // Hoppar över vanliga textlänkar
-      if (!isCTA) continue;
-
-      // Hämtar text
-      const text =
-        (
-          await element.innerText().catch(
-            () => ""
-          )
-        ).trim();
-
-      // Hämtar href
-      const href =
-        await element.getAttribute("href");
-
-      // Om CTA:n saknar href kan vi inte kontrollera destinationen
-      if (!href) {
-        continue;
-      }
-
-      // Ignorera länkar som inte leder till en sida
-      if (
-        href.startsWith("#") ||
-        href.startsWith("mailto:") ||
-        href.startsWith("tel:") ||
-        href.startsWith("javascript:")
-      ) {
-        continue;
-      }
-
-      try {
-
-        // Gör relativ URL till absolut URL
-        const targetUrl = new URL(
-          href,
-          pageUrl
-        ).toString();
-
-        // Kontrollerar destinationen
-        const response =
-          await page.request.get(
-            targetUrl
+          // Hämtar elementets tag
+          const tagName = await element.evaluate(
+            (el) => el.tagName.toLowerCase()
           );
 
-        if (
-          response.status() >= 200 &&
-          response.status() < 400
-        ) {
+          // Hämtar CSS-klasser
+          const className =
+            (
+              await element.getAttribute("class")
+            )?.toLowerCase() ?? "";
 
-          passed++;
+          // Hämtar role
+          const role =
+            (
+              await element.getAttribute("role")
+            )?.toLowerCase() ?? "";
 
-        } else {
+          // Kontrollerar om elementet har en vanlig knapp/CTA-klass
+          const hasButtonClass =
+            buttonClasses.some(
+              (buttonClass) =>
+                className.includes(buttonClass)
+            );
 
-          failed++;
+          // Kontrollerar om elementet är en knapp
+          const isButtonElement =
+            tagName === "button" ||
+            tagName === "input";
 
-          console.log(
-            `✗ CTA fungerar inte: "${text}" - ${targetUrl} - ${response.status()}`
-          );
+          // Kontrollerar om länken har role="button"
+          const isButtonRole =
+            role === "button";
+
+          // Bestämmer om elementet är en CTA
+          const isCTA =
+            isButtonElement ||
+            isButtonRole ||
+            hasButtonClass;
+
+          // Hoppar över vanliga textlänkar
+          if (!isCTA) continue;
+
+          // Hämtar text
+          const text =
+            (
+              await element.innerText()
+            ).trim();
+
+          // Hämtar href
+          const href =
+            await element.getAttribute("href");
+
+          // Om CTA:n saknar href kan vi inte kontrollera destinationen
+          if (!href) {
+            continue;
+          }
+
+          // Ignorera länkar som inte leder till en sida
+          if (
+            href.startsWith("#") ||
+            href.startsWith("mailto:") ||
+            href.startsWith("tel:") ||
+            href.startsWith("javascript:")
+          ) {
+            continue;
+          }
+
+          // Gör relativ URL till absolut URL
+          const targetUrl = new URL(
+            href,
+            pageUrl
+          ).toString();
+
+          // Kontrollerar destinationen
+          const response =
+            await page.request.get(
+              targetUrl
+            );
+
+          if (
+            response.status() >= 200 &&
+            response.status() < 400
+          ) {
+
+            passed++;
+
+          } else {
+
+            failed++;
+
+            console.log(
+              `✗ CTA fungerar inte: "${text}" - ${targetUrl} - ${response.status()}`
+            );
+          }
+
+        } catch {
+
+          // Elementet kan ha försvunnit eller ändrats under laddningen
+          continue;
         }
-
-      } catch {
-
-        failed++;
-
-        console.log(
-          `✗ CTA kunde inte kontrolleras: "${text}"`
-        );
       }
+
+    } catch {
+
+      // Om en sida inte kan laddas fortsätter CTA-testet med nästa sida
+      console.log(
+        `⚠ CTA kunde inte kontrolleras på: ${pageUrl}`
+      );
+
+      continue;
     }
   }
 

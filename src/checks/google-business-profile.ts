@@ -77,6 +77,44 @@ export async function checkGoogleBusinessProfile(
     return decoded;
   }
 
+  // Hämtar den riktiga Google Maps-adressen
+  // om Google har skickat oss via consent.google.com
+  function getRealGoogleProfileUrl(url: string) {
+
+    const decodedUrl =
+      decodeGoogleMapsUrl(url);
+
+    try {
+
+      const parsedUrl =
+        new URL(decodedUrl);
+
+      if (
+        parsedUrl.hostname.includes(
+          "consent.google.com"
+        )
+      ) {
+
+        const continueUrl =
+          parsedUrl.searchParams.get(
+            "continue"
+          );
+
+        if (continueUrl) {
+
+          return decodeGoogleMapsUrl(
+            continueUrl
+          );
+        }
+      }
+
+    } catch {
+      // Behåller originaladressen om URL:en inte kan läsas
+    }
+
+    return decodedUrl;
+  }
+
   // Avkodar företagsnamn som Google Maps
   // ibland sparar som Base64 efter !2z
   function decodeGoogleMapsCompanyName(
@@ -296,7 +334,7 @@ export async function checkGoogleBusinessProfile(
   for (const pageUrl of pages) {
 
     await page.goto(pageUrl, {
-      waitUntil: "networkidle",
+      waitUntil: "domcontentloaded",
     });
 
     // Vanliga länkar
@@ -319,6 +357,17 @@ export async function checkGoogleBusinessProfile(
       const lowerLink =
         link.toLowerCase();
 
+      // Google Maps embed ska inte räknas som
+      // en Business Profile-länk.
+      if (
+        lowerLink.includes(
+          "google.com/maps/embed"
+        )
+      ) {
+        continue;
+      }
+
+      // Vanliga Google Business Profile-länkar
       if (
         lowerLink.includes(
           "google.com/maps/place"
@@ -328,7 +377,18 @@ export async function checkGoogleBusinessProfile(
         ) ||
         lowerLink.includes(
           "maps.google.com/maps/place"
-        ) ||
+        )
+      ) {
+
+        googleProfileCandidates.add(
+          link
+        );
+      }
+
+      // maps.app.goo.gl kan vara en redirect.
+      // Den hanteras senare och sparar endast
+      // den slutliga Google Maps-profilen.
+      if (
         lowerLink.includes(
           "maps.app.goo.gl"
         )
@@ -391,16 +451,9 @@ export async function checkGoogleBusinessProfile(
 
     for (const embed of googleMapsEmbeds) {
 
-      console.log(
-        `Google Maps URL: ${embed}`
-      );
-
-      // Avkodar URL
       const decodedEmbed =
         decodeGoogleMapsUrl(embed);
 
-      // Avkodar eventuellt företagsnamn
-      // från Google Maps Base64-data
       const decodedCompanyName =
         decodeGoogleMapsCompanyName(embed);
 
@@ -423,10 +476,7 @@ export async function checkGoogleBusinessProfile(
         | string
         | undefined;
 
-      // ----------------------------------------------
-      // 1. Direkt matchning
-      // ----------------------------------------------
-
+      // Direkt matchning
       for (
         let i = 0;
         i < normalizedCompanyNames.length;
@@ -453,10 +503,7 @@ export async function checkGoogleBusinessProfile(
         }
       }
 
-      // ----------------------------------------------
-      // 2. Matchning med viktiga ord
-      // ----------------------------------------------
-
+      // Matchning med viktiga ord
       if (!matchedName) {
 
         for (
@@ -513,10 +560,6 @@ export async function checkGoogleBusinessProfile(
         }
       }
 
-      // ----------------------------------------------
-      // RESULTAT
-      // ----------------------------------------------
-
       if (matchedName) {
 
         mapsMatches.push({
@@ -544,7 +587,7 @@ export async function checkGoogleBusinessProfile(
   }
 
   // --------------------------------------------------
-  // DIREKTA GOOGLE BUSINESS PROFILE-LÄNKAR
+  // GOOGLE BUSINESS PROFILE
   // --------------------------------------------------
 
   if (
@@ -573,11 +616,54 @@ export async function checkGoogleBusinessProfile(
           timeout: 20000,
         });
 
+        // Hämtar slutadressen efter eventuell redirect.
         const finalUrl =
           page.url();
 
+        const realProfileUrl =
+          getRealGoogleProfileUrl(
+            finalUrl
+          ).replace(/ /g, "%20");
+
+        const normalizedProfileUrl =
+          realProfileUrl.toLowerCase();
+
+        // En kandidat som inte slutade på en
+        // Google Maps-profil ska inte räknas.
+        if (
+          !normalizedProfileUrl.includes(
+            "google.com/maps/place"
+          ) &&
+          !normalizedProfileUrl.includes(
+            "google.se/maps/place"
+          ) &&
+          !normalizedProfileUrl.includes(
+            "maps.google.com/maps/place"
+          )
+        ) {
+
+          console.log(
+            `⚠ Google-länk leder inte till en Business Profile: ${profile}`
+          );
+
+          continue;
+        }
+
+        // Om flera länkar leder till samma profil
+        // kontrollerar vi den bara en gång.
+        if (
+          found.has(realProfileUrl)
+        ) {
+
+          console.log(
+            "✓ Google Business Profile är redan kontrollerad."
+          );
+
+          continue;
+        }
+
         console.log(
-          `Google-profil URL: ${finalUrl}`
+          `Google-profil URL: ${realProfileUrl}`
         );
 
         let googleText = "";
@@ -594,16 +680,14 @@ export async function checkGoogleBusinessProfile(
           googleText = "";
         }
 
-        // URL + sidans text
         const decodedUrl =
           decodeGoogleMapsUrl(
-            finalUrl
+            realProfileUrl
           );
 
-        // Även Base64-information från URL
         const decodedCompanyName =
           decodeGoogleMapsCompanyName(
-            finalUrl
+            realProfileUrl
           );
 
         const googleContent =
@@ -709,13 +793,14 @@ export async function checkGoogleBusinessProfile(
 
         if (matchedName) {
 
-          found.add(profile);
+          found.add(
+            realProfileUrl
+          );
 
           console.log(
             `✓ Google Business Profile matchar företaget: ${matchedName}`
           );
 
-          // Screenshot-mapp
           const screenshotDirectory =
             path.join(
               "test-results",
@@ -744,7 +829,7 @@ export async function checkGoogleBusinessProfile(
           });
 
           screenshots.push({
-            url: finalUrl,
+            url: realProfileUrl,
             path: screenshotPath,
           });
 
@@ -759,7 +844,7 @@ export async function checkGoogleBusinessProfile(
           );
 
           failed.push({
-            url: profile,
+            url: realProfileUrl,
             message:
               "Google Business Profile hittades men företagsnamnet kunde inte bekräftas",
           });

@@ -1,7 +1,13 @@
 import { test, expect } from "@playwright/test";
 
 test("Playwright fungerar", async ({ page }) => {
-  await page.goto("https://example.com");
+  const url = process.env.TARGET_URL;
 
-  await expect(page).toHaveTitle(/Example Domain/);
+  if (!url) {
+    throw new Error("TARGET_URL måste anges");
+  }
+
+  await page.goto(url);
+
+  await expect(page).toHaveTitle(/.+/);
 });
