@@ -15,6 +15,7 @@ import { checkResponsive } from "./checks/responsive";
 import { checkCookieGdpr } from "./checks/cookie-gdpr";
 import { checkSecurity } from "./checks/security";
 import { checkDomains } from "./checks/domains";
+import { createSimilarDomainQueries } from "./checks/similar-domains";
 
 import {
   printQAReport,
@@ -78,7 +79,6 @@ export async function scanWebsite(
     pages
   );
 
-  // SEO-fel betyder att något tekniskt behöver åtgärdas
   if (seoResult.failed.length > 0) {
 
     results.push({
@@ -88,7 +88,6 @@ export async function scanWebsite(
         `${seoResult.failed.length} tekniska SEO-fel hittades`,
     });
 
-  // SEO-varningar betyder att något bör förbättras
   } else if (seoResult.warnings.length > 0) {
 
     results.push({
@@ -98,7 +97,6 @@ export async function scanWebsite(
         `${seoResult.warnings.length} SEO-varningar hittades`,
     });
 
-  // Om inga fel eller varningar hittades
   } else {
 
     results.push({
@@ -113,7 +111,6 @@ export async function scanWebsite(
   const performanceResult =
     await checkPerformance(url);
 
-  // Visar både Desktop och Mobile Performance
   if (performanceResult.desktop !== null) {
 
     results.push({
@@ -126,7 +123,6 @@ export async function scanWebsite(
 
   } else {
 
-    // Om PageSpeed inte kunde genomföras
     results.push({
       name: "Prestanda",
       status: "WARNING",
@@ -142,7 +138,6 @@ export async function scanWebsite(
       pages
     );
 
-  // Om inga sidor har horisontell scroll
   if (responsiveResult.failed === 0) {
 
     results.push({
@@ -154,7 +149,6 @@ export async function scanWebsite(
 
   } else {
 
-    // Om någon sida har problem i mobilvy
     results.push({
       name: "Responsivitet",
       status: "FAIL",
@@ -170,7 +164,6 @@ export async function scanWebsite(
       pages
     );
 
-  // Om en Cookie- eller Integritetspolicy hittades
   if (cookieGdprResult.found > 0) {
 
     results.push({
@@ -182,7 +175,6 @@ export async function scanWebsite(
 
   } else {
 
-    // Om ingen relevant sida hittades
     results.push({
       name: "Cookie / GDPR",
       status: "WARNING",
@@ -190,32 +182,191 @@ export async function scanWebsite(
         "Ingen Cookie- eller Integritetspolicy hittades",
     });
   }
+
   // ==============================
-// HTTPS / SECURITY
-// ==============================
+  // HTTPS / SECURITY
+  // ==============================
 
-const securityResult =
-  await checkSecurity(url);
+  const securityResult =
+    await checkSecurity(url);
 
-results.push({
-  name: "HTTPS / Security",
-  status: securityResult.status,
-  message: securityResult.message,
-});
-// ==============================
-// ALTERNATIVA DOMÄNER
-// ==============================
+  results.push({
+    name: "HTTPS / Security",
+    status: securityResult.status,
+    message: securityResult.message,
+  });
 
-const domainsResult =
-  await checkDomains(url);
+  // ==============================
+  // ALTERNATIVA DOMÄNER
+  // ==============================
 
-results.push({
-  name: "Alternativa domäner",
-  status: domainsResult.status,
-  message:
-    `${domainsResult.passed} fungerar, ` +
-    `${domainsResult.failed} fungerar inte`,
-});
+  const domainsResult =
+    await checkDomains(url);
+
+  results.push({
+    name: "Alternativa domäner",
+    status: domainsResult.status,
+    message:
+      `${domainsResult.passed} fungerar, ` +
+      `${domainsResult.failed} fungerar inte`,
+  });
+
+  // ==============================
+  // HÄMTAR FÖRETAGSNAMN
+  // ==============================
+
+  let companyName = "";
+
+  try {
+
+    await page.goto(url, {
+      waitUntil: "domcontentloaded",
+    });
+
+    // Hämtar JSON-LD-data från sidan
+    const jsonLdScripts = await page
+      .locator('script[type="application/ld+json"]')
+      .allTextContents();
+
+    for (const scriptText of jsonLdScripts) {
+
+      try {
+
+        const data = JSON.parse(scriptText);
+
+        const objects = Array.isArray(data)
+          ? data
+          : [data];
+
+        for (const object of objects) {
+
+          // Kontrollerar huvudobjektet
+          if (
+            object &&
+            typeof object === "object" &&
+            typeof object.name === "string"
+          ) {
+
+            const type =
+              object["@type"];
+
+            console.log(
+              "JSON-LD:",
+              type,
+              object.name
+            );
+
+            if (
+              type === "Organization" ||
+              type === "LocalBusiness" ||
+              type === "Corporation" ||
+              type === "ProfessionalService"
+            ) {
+
+              companyName =
+                object.name.trim();
+
+              break;
+            }
+          }
+
+          // Kontrollerar även @graph
+          if (
+            object &&
+            typeof object === "object" &&
+            Array.isArray(object["@graph"])
+          ) {
+
+            for (
+              const graphObject
+              of object["@graph"]
+            ) {
+
+              if (
+                graphObject &&
+                typeof graphObject === "object" &&
+                typeof graphObject.name === "string"
+              ) {
+
+                const type =
+                  graphObject["@type"];
+
+                console.log(
+                  "JSON-LD GRAPH:",
+                  type,
+                  graphObject.name
+                );
+
+                if (
+                  type === "Organization" ||
+                  type === "LocalBusiness" ||
+                  type === "Corporation" ||
+                  type === "ProfessionalService"
+                ) {
+
+                  companyName =
+                    graphObject.name.trim();
+
+                  break;
+                }
+              }
+            }
+          }
+
+          if (companyName) {
+            break;
+          }
+        }
+
+        if (companyName) {
+          break;
+        }
+
+      } catch {
+        // Ignorerar JSON-LD som inte går att läsa
+      }
+    }
+
+  } catch {
+    // Fortsätter med fallback nedan
+  }
+
+  // Om JSON-LD inte gav något företagsnamn
+  // används sidtiteln som reservlösning.
+  if (!companyName) {
+
+    companyName =
+      pageResult.title
+        ? pageResult.title
+            .split("|")
+            .pop()
+            ?.trim() || ""
+        : "";
+  }
+
+  console.log(
+    `\nFöretagsnamn för liknande domäner: ${
+      companyName || "kunde inte hittas"
+    }`
+  );
+
+  // ==============================
+  // LIKNANDE DOMÄNER / FÖRETAGSNAMN
+  // ==============================
+
+  if (companyName) {
+
+    createSimilarDomainQueries(
+      url,
+      companyName
+    );
+
+  } else {
+
+    console.log(
+      "\n⚠ Kunde inte hitta ett företagsnamn för kontroll av liknande domäner."
+    );
+  }
 
   // 6. Kontrollerar interna och externa länkar
   console.log("\n--- LÄNKAR ---");
@@ -226,19 +377,16 @@ results.push({
     pages
   );
 
-  // Räknar ihop alla trasiga länkar
   const totalLinkFailures =
     linkResult.internalFailed +
     linkResult.externalFailed;
 
-  // Räknar ihop alla kontrollerade länkar
   const totalLinks =
     linkResult.internalPassed +
     linkResult.internalFailed +
     linkResult.externalPassed +
     linkResult.externalFailed;
 
-  // Om alla länkar fungerar
   if (totalLinkFailures === 0) {
 
     results.push({
@@ -250,7 +398,6 @@ results.push({
 
   } else {
 
-    // Om trasiga länkar hittades
     results.push({
       name: "Länkar",
       status: "FAIL",
@@ -267,7 +414,6 @@ results.push({
     pages
   );
 
-  // Om alla bilder fungerar
   if (imageResult.failed === 0) {
 
     results.push({
@@ -279,7 +425,6 @@ results.push({
 
   } else {
 
-    // Om trasiga bilder hittades
     results.push({
       name: "Bilder",
       status: "FAIL",
@@ -296,7 +441,6 @@ results.push({
     pages
   );
 
-  // Visar antal formulär och formulärfält
   results.push({
     name: "Formulär",
     status: "PASS",
@@ -314,7 +458,6 @@ results.push({
     pages
   );
 
-  // Ogiltig e-post är ett fel
   if (validationResult.emailFailed > 0) {
 
     results.push({
@@ -324,7 +467,6 @@ results.push({
         `${validationResult.emailFailed} e-postfält accepterar ogiltig e-post`,
     });
 
-  // Ogiltigt telefonnummer som accepteras ger en varning
   } else if (validationResult.phoneFailed > 0) {
 
     results.push({
@@ -334,7 +476,6 @@ results.push({
         `${validationResult.phoneFailed} telefonfält saknar client-side validering`,
     });
 
-  // Om all formulärvalidering fungerar
   } else {
 
     results.push({
@@ -354,7 +495,6 @@ results.push({
     pages
   );
 
-  // Om alla interna navigationer fungerar
   if (navigationResult.failed === 0) {
 
     results.push({
@@ -366,7 +506,6 @@ results.push({
 
   } else {
 
-    // Om interna navigationer inte fungerar
     results.push({
       name: "Navigation",
       status: "FAIL",
@@ -383,7 +522,6 @@ results.push({
     pages
   );
 
-  // Om alla CTA-länkar fungerar
   if (ctaResult.failed === 0) {
 
     results.push({
@@ -395,7 +533,6 @@ results.push({
 
   } else {
 
-    // Om CTA-länkar inte fungerar
     results.push({
       name: "CTA",
       status: "FAIL",
@@ -414,7 +551,6 @@ results.push({
       url
     );
 
-  // Om sociala medier inte matchar företaget
   if (socialMediaResult.failed.length > 0) {
 
     results.push({
@@ -426,7 +562,6 @@ results.push({
 
   } else {
 
-    // Om sociala medier hittades och matchar
     results.push({
       name: "Sociala medier",
       status: "PASS",
@@ -444,7 +579,6 @@ results.push({
       pages
     );
 
-  // Om Google Maps-länkar hittades
   if (googleMapsResult.found.length > 0) {
 
     results.push({
@@ -456,7 +590,6 @@ results.push({
 
   } else {
 
-    // Om ingen Google Maps-länk hittades
     results.push({
       name: "Google Maps",
       status: "WARNING",
@@ -474,7 +607,6 @@ results.push({
       pages
     );
 
-  // Om profiler inte kunde bekräftas
   if (
     googleBusinessProfileResult.failed.length > 0
   ) {
@@ -486,7 +618,6 @@ results.push({
         `${googleBusinessProfileResult.failed.length} Google-profiler kunde inte bekräftas`,
     });
 
-  // Om direkta Google-profiler hittades
   } else if (
     googleBusinessProfileResult.found.length > 0
   ) {
@@ -498,7 +629,6 @@ results.push({
         `${googleBusinessProfileResult.found.length} Google-profiler hittades och matchar företaget`,
     });
 
-  // Om Google Business Profile kunde matchas via Google Maps
   } else if (
     googleBusinessProfileResult.mapsMatches.length > 0
   ) {
@@ -510,7 +640,6 @@ results.push({
         "Google Business Profile matchar företaget via Google Maps",
     });
 
-  // Om ingen direkt profil kunde verifieras
   } else {
 
     results.push({
