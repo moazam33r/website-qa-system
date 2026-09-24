@@ -13,6 +13,7 @@ import { checkGoogleBusinessProfile } from "./checks/google-business-profile";
 import { checkSEO } from "./checks/seo";
 import { checkPerformance } from "./checks/performance";
 import { checkResponsive } from "./checks/responsive";
+import { checkCookieGdpr } from "./checks/cookie-gdpr";
 
 import {
   printQAReport,
@@ -148,6 +149,27 @@ export async function scanWebsite(
         `${responsiveResult.failed} sidor har problem i mobilvy`,
     });
   }
+        // 5. Kontrollerar Cookie / GDPR-sidor
+      const cookieGdprResult = await checkCookieGdpr(
+        page,
+        pages
+      );
+
+      if (cookieGdprResult.found > 0) {
+        results.push({
+          name: "Cookie / GDPR",
+          status: "PASS",
+          message:
+            `${cookieGdprResult.found} relevanta sidor hittades`,
+        });
+      } else {
+        results.push({
+          name: "Cookie / GDPR",
+          status: "WARNING",
+          message:
+            "Ingen Cookie- eller Integritetspolicy hittades",
+        });
+      }
 
   // 5. Kontrollerar interna och externa länkar
   console.log("\n--- LÄNKAR ---");
