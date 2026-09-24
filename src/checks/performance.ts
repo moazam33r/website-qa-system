@@ -4,160 +4,268 @@ import "dotenv/config";
 export async function checkPerformance(url: string) {
 
   console.log("\n--- PRESTANDA ---");
-  console.log("PageSpeed Performance check:");
 
   try {
 
+    // Hämtar API-nyckeln från .env
     const apiKey = process.env.PAGESPEED_API_KEY;
 
+    // Om API-nyckeln saknas kan testet inte köras
     if (!apiKey) {
       console.log(
         "⚠ PAGESPEED_API_KEY saknas i .env"
       );
 
       return {
-        score: null,
-        lcp: null,
-        cls: null,
-        fcp: null,
+        desktop: null,
+        mobile: null,
         status: "WARNING" as const,
       };
     }
 
-    const apiUrl =
-      `https://www.googleapis.com/pagespeedonline/v5/runPagespeed` +
-      `?url=${encodeURIComponent(url)}` +
-      `&category=performance` +
-      `&strategy=desktop` +
-      `&key=${encodeURIComponent(apiKey)}`;
+    // Kör PageSpeed för desktop eller mobile
+    const runPageSpeed = async (
+      strategy: "desktop" | "mobile"
+    ) => {
 
-    const response = await fetch(apiUrl);
+      // Skapar URL till PageSpeed API
+      const apiUrl =
+        `https://www.googleapis.com/pagespeedonline/v5/runPagespeed` +
+        `?url=${encodeURIComponent(url)}` +
+        `&category=performance` +
+        `&strategy=${strategy}` +
+        `&key=${encodeURIComponent(apiKey)}`;
 
-    // PageSpeed API har nått sin rate limit
-    if (response.status === 429) {
+      // Skickar förfrågan till PageSpeed
+      const response = await fetch(apiUrl);
 
-      console.log(
-        "⚠ PageSpeed kunde inte genomföras: API rate limit (429)"
+      // PageSpeed har nått sin rate limit
+      if (response.status === 429) {
+        console.log(
+          `⚠ PageSpeed ${strategy} kunde inte genomföras: API rate limit (429)`
+        );
+
+        return null;
+      }
+
+      // Kontrollerar om API-anropet misslyckades
+      if (!response.ok) {
+        console.log(
+          `⚠ PageSpeed ${strategy} kunde inte genomföras (${response.status})`
+        );
+
+        return null;
+      }
+
+      // Hämtar resultatet från API:t
+      const data = await response.json();
+
+      // Hämtar Performance-score från Lighthouse
+      const performanceScore =
+        data?.lighthouseResult?.categories?.performance?.score;
+
+      // Om ingen score hittades kan testet inte fortsätta
+      if (typeof performanceScore !== "number") {
+        console.log(
+          `⚠ Ingen PageSpeed Performance-score hittades för ${strategy}`
+        );
+
+        return null;
+      }
+
+      // Gör om score från exempelvis 0.95 till 95
+      const score = Math.round(
+        performanceScore * 100
       );
 
-      return {
-        score: null,
-        lcp: null,
-        cls: null,
-        fcp: null,
-        status: "WARNING" as const,
-      };
-    }
+      // Hämtar Lighthouse-mätvärden
+      const audits =
+        data?.lighthouseResult?.audits;
 
-    if (!response.ok) {
+      // Hämtar Largest Contentful Paint
+      const lcp =
+        audits?.["largest-contentful-paint"]?.numericValue;
+
+      // Hämtar Cumulative Layout Shift
+      const cls =
+        audits?.["cumulative-layout-shift"]?.numericValue;
+
+      // Hämtar First Contentful Paint
+      const fcp =
+        audits?.["first-contentful-paint"]?.numericValue;
+
+      // Bestämmer resultatet baserat på Performance-score
+      let status: "PASS" | "WARNING" | "FAIL";
+
+      if (score >= 80) {
+        status = "PASS";
+      } else if (score >= 50) {
+        status = "WARNING";
+      } else {
+        status = "FAIL";
+      }
+
+      // Returnerar resultatet
+      return {
+        score,
+        lcp: typeof lcp === "number" ? lcp : null,
+        cls: typeof cls === "number" ? cls : null,
+        fcp: typeof fcp === "number" ? fcp : null,
+        status,
+      };
+    };
+
+    // ==============================
+    // DESKTOP
+    // ==============================
+
+    console.log("\nDesktop:");
+
+    // Kör PageSpeed-test för desktop
+    const desktop = await runPageSpeed(
+      "desktop"
+    );
+
+    if (desktop) {
 
       console.log(
-        `⚠ PageSpeed kunde inte genomföras (${response.status})`
+        `Performance score: ${desktop.score}/100`
       );
 
-      return {
-        score: null,
-        lcp: null,
-        cls: null,
-        fcp: null,
-        status: "WARNING" as const,
-      };
+      // Visar LCP om värdet finns
+      if (typeof desktop.lcp === "number") {
+        console.log(
+          `LCP: ${(desktop.lcp / 1000).toFixed(2)} s`
+        );
+      }
+
+      // Visar CLS om värdet finns
+      if (typeof desktop.cls === "number") {
+        console.log(
+          `CLS: ${desktop.cls.toFixed(2)}`
+        );
+      }
+
+      // Visar FCP om värdet finns
+      if (typeof desktop.fcp === "number") {
+        console.log(
+          `FCP: ${(desktop.fcp / 1000).toFixed(2)} s`
+        );
+      }
+
+      // Visar resultatet för desktop
+      if (desktop.status === "PASS") {
+        console.log(
+          "✓ Desktop Performance är godkänd"
+        );
+      } else if (desktop.status === "WARNING") {
+        console.log(
+          "⚠ Desktop Performance kan förbättras"
+        );
+      } else {
+        console.log(
+          "✗ Låg Desktop Performance"
+        );
+      }
     }
 
-    const data = await response.json();
+    // ==============================
+    // MOBILE
+    // ==============================
 
-    const performanceScore =
-      data?.lighthouseResult?.categories?.performance?.score;
+    console.log("\nMobile:");
 
-    if (typeof performanceScore !== "number") {
+    // Kör PageSpeed-test för mobile
+    const mobile = await runPageSpeed(
+      "mobile"
+    );
+
+    if (mobile) {
 
       console.log(
-        "⚠ Ingen PageSpeed Performance-score hittades"
+        `Performance score: ${mobile.score}/100`
       );
 
+      // Visar LCP om värdet finns
+      if (typeof mobile.lcp === "number") {
+        console.log(
+          `LCP: ${(mobile.lcp / 1000).toFixed(2)} s`
+        );
+      }
+
+      // Visar CLS om värdet finns
+      if (typeof mobile.cls === "number") {
+        console.log(
+          `CLS: ${mobile.cls.toFixed(2)}`
+        );
+      }
+
+      // Visar FCP om värdet finns
+      if (typeof mobile.fcp === "number") {
+        console.log(
+          `FCP: ${(mobile.fcp / 1000).toFixed(2)} s`
+        );
+      }
+
+      // Visar resultatet för mobile
+      if (mobile.status === "PASS") {
+        console.log(
+          "✓ Mobile Performance är godkänd"
+        );
+      } else if (mobile.status === "WARNING") {
+        console.log(
+          "⚠ Mobile Performance kan förbättras"
+        );
+      } else {
+        console.log(
+          "✗ Låg Mobile Performance"
+        );
+      }
+    }
+
+    // Om någon av testerna inte kunde genomföras
+    if (!desktop || !mobile) {
       return {
-        score: null,
-        lcp: null,
-        cls: null,
-        fcp: null,
+        desktop,
+        mobile,
         status: "WARNING" as const,
       };
     }
 
-    const score = Math.round(performanceScore * 100);
-
-    // Lighthouse-mätvärden
-    const audits = data?.lighthouseResult?.audits;
-
-    const lcp =
-      audits?.["largest-contentful-paint"]?.numericValue;
-
-    const cls =
-      audits?.["cumulative-layout-shift"]?.numericValue;
-
-    const fcp =
-      audits?.["first-contentful-paint"]?.numericValue;
-
-    console.log(`Performance score: ${score}/100`);
-
-    if (typeof lcp === "number") {
-      console.log(`LCP: ${(lcp / 1000).toFixed(2)} s`);
-    }
-
-    if (typeof cls === "number") {
-      console.log(`CLS: ${cls.toFixed(2)}`);
-    }
-
-    if (typeof fcp === "number") {
-      console.log(`FCP: ${(fcp / 1000).toFixed(2)} s`);
-    }
-
+    // Bestämmer det totala resultatet
     let status: "PASS" | "WARNING" | "FAIL";
 
-    if (score >= 80) {
-
-      status = "PASS";
-
-      console.log(
-        "✓ Performance är godkänd"
-      );
-
-    } else if (score >= 50) {
-
-      status = "WARNING";
-
-      console.log(
-        "⚠ Performance kan förbättras"
-      );
-
-    } else {
-
+    if (
+      desktop.status === "FAIL" ||
+      mobile.status === "FAIL"
+    ) {
       status = "FAIL";
-
-      console.log(
-        "✗ Låg Performance"
-      );
+    } else if (
+      desktop.status === "WARNING" ||
+      mobile.status === "WARNING"
+    ) {
+      status = "WARNING";
+    } else {
+      status = "PASS";
     }
 
+    // Returnerar desktop-, mobile- och totalresultatet
     return {
-      score,
-      lcp: typeof lcp === "number" ? lcp : null,
-      cls: typeof cls === "number" ? cls : null,
-      fcp: typeof fcp === "number" ? fcp : null,
+      desktop,
+      mobile,
       status,
     };
 
   } catch (error) {
 
+    // Hanterar fel om PageSpeed-testet inte kan genomföras
     console.log(
       "⚠ PageSpeed-kontrollen kunde inte genomföras"
     );
 
     return {
-      score: null,
-      lcp: null,
-      cls: null,
-      fcp: null,
+      desktop: null,
+      mobile: null,
       status: "WARNING" as const,
     };
   }

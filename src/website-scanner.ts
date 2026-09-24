@@ -1,5 +1,4 @@
 import { Page } from "@playwright/test";
-
 import { checkCTA } from "./checks/cta";
 import { checkPages } from "./checks/pages";
 import { checkLinks } from "./checks/links";
@@ -77,8 +76,7 @@ export async function scanWebsite(
     pages
   );
 
-  // SEO-varningar betyder att något bör förbättras,
-  // men att kontrollen fortfarande kunde genomföras.
+  // SEO-fel betyder att något tekniskt behöver åtgärdas
   if (seoResult.failed.length > 0) {
 
     results.push({
@@ -88,6 +86,7 @@ export async function scanWebsite(
         `${seoResult.failed.length} tekniska SEO-fel hittades`,
     });
 
+  // SEO-varningar betyder att något bör förbättras
   } else if (seoResult.warnings.length > 0) {
 
     results.push({
@@ -97,6 +96,7 @@ export async function scanWebsite(
         `${seoResult.warnings.length} SEO-varningar hittades`,
     });
 
+  // Om inga fel eller varningar hittades
   } else {
 
     results.push({
@@ -108,29 +108,39 @@ export async function scanWebsite(
   }
 
   // 3. Kontrollerar webbplatsens prestanda
-  console.log("\n--- PRESTANDA ---");
-
   const performanceResult =
     await checkPerformance(url);
 
-  results.push({
-    name: "Prestanda",
-    status: performanceResult.status,
-    message:
-      performanceResult.score !== null
-        ? `Performance score: ${performanceResult.score}/100`
-        : "PageSpeed-kontrollen kunde inte genomföras",
-  });
+  // Visar både Desktop och Mobile Performance
+  if (performanceResult.desktop !== null) {
+
+    results.push({
+      name: "Prestanda",
+      status: performanceResult.status,
+      message:
+        `Desktop: ${performanceResult.desktop.score}/100 | ` +
+        `Mobile: ${performanceResult.mobile?.score ?? "N/A"}/100`,
+    });
+
+  } else {
+
+    // Om PageSpeed inte kunde genomföras
+    results.push({
+      name: "Prestanda",
+      status: "WARNING",
+      message:
+        "PageSpeed-kontrollen kunde inte genomföras",
+    });
+  }
 
   // 4. Kontrollerar mobil och responsivitet
-  console.log("\n--- MOBIL / RESPONSIVITET ---");
-
   const responsiveResult =
     await checkResponsive(
       page,
       pages
     );
 
+  // Om inga sidor har horisontell scroll
   if (responsiveResult.failed === 0) {
 
     results.push({
@@ -142,6 +152,7 @@ export async function scanWebsite(
 
   } else {
 
+    // Om någon sida har problem i mobilvy
     results.push({
       name: "Responsivitet",
       status: "FAIL",
@@ -149,29 +160,36 @@ export async function scanWebsite(
         `${responsiveResult.failed} sidor har problem i mobilvy`,
     });
   }
-        // 5. Kontrollerar Cookie / GDPR-sidor
-      const cookieGdprResult = await checkCookieGdpr(
-        page,
-        pages
-      );
 
-      if (cookieGdprResult.found > 0) {
-        results.push({
-          name: "Cookie / GDPR",
-          status: "PASS",
-          message:
-            `${cookieGdprResult.found} relevanta sidor hittades`,
-        });
-      } else {
-        results.push({
-          name: "Cookie / GDPR",
-          status: "WARNING",
-          message:
-            "Ingen Cookie- eller Integritetspolicy hittades",
-        });
-      }
+  // 5. Kontrollerar Cookie / GDPR-sidor
+  const cookieGdprResult =
+    await checkCookieGdpr(
+      page,
+      pages
+    );
 
-  // 5. Kontrollerar interna och externa länkar
+  // Om en Cookie- eller Integritetspolicy hittades
+  if (cookieGdprResult.found > 0) {
+
+    results.push({
+      name: "Cookie / GDPR",
+      status: "PASS",
+      message:
+        `${cookieGdprResult.found} relevanta sidor hittades`,
+    });
+
+  } else {
+
+    // Om ingen relevant sida hittades
+    results.push({
+      name: "Cookie / GDPR",
+      status: "WARNING",
+      message:
+        "Ingen Cookie- eller Integritetspolicy hittades",
+    });
+  }
+
+  // 6. Kontrollerar interna och externa länkar
   console.log("\n--- LÄNKAR ---");
 
   const linkResult = await checkLinks(
@@ -180,16 +198,19 @@ export async function scanWebsite(
     pages
   );
 
+  // Räknar ihop alla trasiga länkar
   const totalLinkFailures =
     linkResult.internalFailed +
     linkResult.externalFailed;
 
+  // Räknar ihop alla kontrollerade länkar
   const totalLinks =
     linkResult.internalPassed +
     linkResult.internalFailed +
     linkResult.externalPassed +
     linkResult.externalFailed;
 
+  // Om alla länkar fungerar
   if (totalLinkFailures === 0) {
 
     results.push({
@@ -201,6 +222,7 @@ export async function scanWebsite(
 
   } else {
 
+    // Om trasiga länkar hittades
     results.push({
       name: "Länkar",
       status: "FAIL",
@@ -209,7 +231,7 @@ export async function scanWebsite(
     });
   }
 
-  // 6. Kontrollerar bilder
+  // 7. Kontrollerar bilder
   console.log("\n--- BILDER ---");
 
   const imageResult = await checkImages(
@@ -217,6 +239,7 @@ export async function scanWebsite(
     pages
   );
 
+  // Om alla bilder fungerar
   if (imageResult.failed === 0) {
 
     results.push({
@@ -228,6 +251,7 @@ export async function scanWebsite(
 
   } else {
 
+    // Om trasiga bilder hittades
     results.push({
       name: "Bilder",
       status: "FAIL",
@@ -236,7 +260,7 @@ export async function scanWebsite(
     });
   }
 
-  // 7. Kontrollerar formulär
+  // 8. Kontrollerar formulär
   console.log("\n--- FORMULÄR ---");
 
   const formResult = await checkForms(
@@ -244,6 +268,7 @@ export async function scanWebsite(
     pages
   );
 
+  // Visar antal formulär och formulärfält
   results.push({
     name: "Formulär",
     status: "PASS",
@@ -253,7 +278,7 @@ export async function scanWebsite(
       `${formResult.requiredCount} obligatoriska fält`,
   });
 
-  // 8. Kontrollerar formulärvalidering
+  // 9. Kontrollerar formulärvalidering
   console.log("\n--- VALIDERING ---");
 
   const validationResult = await checkValidation(
@@ -261,6 +286,7 @@ export async function scanWebsite(
     pages
   );
 
+  // Ogiltig e-post är ett fel
   if (validationResult.emailFailed > 0) {
 
     results.push({
@@ -270,6 +296,7 @@ export async function scanWebsite(
         `${validationResult.emailFailed} e-postfält accepterar ogiltig e-post`,
     });
 
+  // Ogiltigt telefonnummer som accepteras ger en varning
   } else if (validationResult.phoneFailed > 0) {
 
     results.push({
@@ -279,6 +306,7 @@ export async function scanWebsite(
         `${validationResult.phoneFailed} telefonfält saknar client-side validering`,
     });
 
+  // Om all formulärvalidering fungerar
   } else {
 
     results.push({
@@ -289,7 +317,7 @@ export async function scanWebsite(
     });
   }
 
-  // 9. Kontrollerar navigation
+  // 10. Kontrollerar navigation
   console.log("\n--- NAVIGATION ---");
 
   const navigationResult = await checkNavigation(
@@ -298,6 +326,7 @@ export async function scanWebsite(
     pages
   );
 
+  // Om alla interna navigationer fungerar
   if (navigationResult.failed === 0) {
 
     results.push({
@@ -309,6 +338,7 @@ export async function scanWebsite(
 
   } else {
 
+    // Om interna navigationer inte fungerar
     results.push({
       name: "Navigation",
       status: "FAIL",
@@ -317,7 +347,7 @@ export async function scanWebsite(
     });
   }
 
-  // 10. Kontrollerar CTA-knappar och länkar
+  // 11. Kontrollerar CTA-knappar och länkar
   console.log("\n--- CTA ---");
 
   const ctaResult = await checkCTA(
@@ -325,6 +355,7 @@ export async function scanWebsite(
     pages
   );
 
+  // Om alla CTA-länkar fungerar
   if (ctaResult.failed === 0) {
 
     results.push({
@@ -336,6 +367,7 @@ export async function scanWebsite(
 
   } else {
 
+    // Om CTA-länkar inte fungerar
     results.push({
       name: "CTA",
       status: "FAIL",
@@ -344,7 +376,7 @@ export async function scanWebsite(
     });
   }
 
-  // 11. Kontrollerar sociala medier
+  // 12. Kontrollerar sociala medier
   console.log("\n--- SOCIALA MEDIER ---");
 
   const socialMediaResult =
@@ -354,6 +386,7 @@ export async function scanWebsite(
       url
     );
 
+  // Om sociala medier inte matchar företaget
   if (socialMediaResult.failed.length > 0) {
 
     results.push({
@@ -365,6 +398,7 @@ export async function scanWebsite(
 
   } else {
 
+    // Om sociala medier hittades och matchar
     results.push({
       name: "Sociala medier",
       status: "PASS",
@@ -373,7 +407,7 @@ export async function scanWebsite(
     });
   }
 
-  // 12. Kontrollerar Google Maps
+  // 13. Kontrollerar Google Maps
   console.log("\n--- GOOGLE MAPS ---");
 
   const googleMapsResult =
@@ -382,6 +416,7 @@ export async function scanWebsite(
       pages
     );
 
+  // Om Google Maps-länkar hittades
   if (googleMapsResult.found.length > 0) {
 
     results.push({
@@ -393,6 +428,7 @@ export async function scanWebsite(
 
   } else {
 
+    // Om ingen Google Maps-länk hittades
     results.push({
       name: "Google Maps",
       status: "WARNING",
@@ -401,7 +437,7 @@ export async function scanWebsite(
     });
   }
 
-  // 13. Kontrollerar Google Business Profile
+  // 14. Kontrollerar Google Business Profile
   console.log("\n--- GOOGLE BUSINESS PROFILE ---");
 
   const googleBusinessProfileResult =
@@ -410,6 +446,7 @@ export async function scanWebsite(
       pages
     );
 
+  // Om profiler inte kunde bekräftas
   if (
     googleBusinessProfileResult.failed.length > 0
   ) {
@@ -421,6 +458,7 @@ export async function scanWebsite(
         `${googleBusinessProfileResult.failed.length} Google-profiler kunde inte bekräftas`,
     });
 
+  // Om direkta Google-profiler hittades
   } else if (
     googleBusinessProfileResult.found.length > 0
   ) {
@@ -432,6 +470,7 @@ export async function scanWebsite(
         `${googleBusinessProfileResult.found.length} Google-profiler hittades och matchar företaget`,
     });
 
+  // Om Google Business Profile kunde matchas via Google Maps
   } else if (
     googleBusinessProfileResult.mapsMatches.length > 0
   ) {
@@ -443,6 +482,7 @@ export async function scanWebsite(
         "Google Business Profile matchar företaget via Google Maps",
     });
 
+  // Om ingen direkt profil kunde verifieras
   } else {
 
     results.push({
