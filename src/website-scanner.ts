@@ -14,6 +14,7 @@ import { checkPerformance } from "./checks/performance";
 import { checkResponsive } from "./checks/responsive";
 import { checkCookieGdpr } from "./checks/cookie-gdpr";
 import { checkSecurity } from "./checks/security";
+import { checkDomains } from "./checks/domains";
 
 import {
   printQAReport,
@@ -200,6 +201,20 @@ results.push({
   name: "HTTPS / Security",
   status: securityResult.status,
   message: securityResult.message,
+});
+// ==============================
+// ALTERNATIVA DOMÄNER
+// ==============================
+
+const domainsResult =
+  await checkDomains(url);
+
+results.push({
+  name: "Alternativa domäner",
+  status: domainsResult.status,
+  message:
+    `${domainsResult.passed} fungerar, ` +
+    `${domainsResult.failed} fungerar inte`,
 });
 
   // 6. Kontrollerar interna och externa länkar
