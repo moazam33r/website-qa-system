@@ -15,7 +15,8 @@ import { checkResponsive } from "./checks/responsive";
 import { checkCookieGdpr } from "./checks/cookie-gdpr";
 import { checkSecurity } from "./checks/security";
 import { checkDomains } from "./checks/domains";
-import { createSimilarDomainQueries } from "./checks/similar-domains";
+import { searchSimilarDomains } from "./checks/similar-domains";
+import { checkText } from "./checks/text-check";
 
 import {
   printQAReport,
@@ -354,20 +355,102 @@ export async function scanWebsite(
   // LIKNANDE DOMÄNER / FÖRETAGSNAMN
   // ==============================
 
-  if (companyName) {
+if (companyName) {
 
-    createSimilarDomainQueries(
+  const similarDomainsResult =
+    await searchSimilarDomains(
       url,
       companyName
     );
 
+  if (similarDomainsResult.found > 0) {
+
+    results.push({
+      name: "Liknande domäner",
+      status: "WARNING",
+      message:
+        `${similarDomainsResult.found} möjliga liknande domäner hittades`,
+    });
+
   } else {
 
-    console.log(
-      "\n⚠ Kunde inte hitta ett företagsnamn för kontroll av liknande domäner."
-    );
+    results.push({
+      name: "Liknande domäner",
+      status: "PASS",
+      message:
+        "Inga andra domäner hittades",
+    });
   }
 
+} else {
+
+  results.push({
+    name: "Liknande domäner",
+    status: "WARNING",
+    message:
+      "Företagsnamn kunde inte hittas",
+  });
+
+  console.log(
+    "\n⚠ Kunde inte hitta ett företagsnamn för kontroll av liknande domäner."
+  );
+  }
+     // 5.5. Kontrollerar stavning och grammatik
+  console.log("\n--- TEXT / STAVNING ---");
+
+  // Tar bort Google-recensioner från sidan innan texten kontrolleras.
+  // Detta förhindrar att kundnamn och recensionstext räknas som stavfel.
+  await page.evaluate(() => {
+    const elements = Array.from(
+      document.querySelectorAll("body *")
+    );
+
+    for (const element of elements) {
+      const text = element.textContent?.trim() || "";
+
+      // Hittar början av Google-recensionswidgeten.
+      if (
+        text.includes("Publicerat på Google") &&
+        text.length < 5000
+      ) {
+        let parent = element.parentElement;
+
+        // Letar efter ett större element som innehåller hela widgeten.
+        for (let i = 0; i < 6 && parent; i++) {
+          const parentText =
+            parent.textContent?.trim() || "";
+
+          if (
+            parentText.includes("Publicerat på Google") &&
+            parentText.length < 10000
+          ) {
+            parent.remove();
+            break;
+          }
+
+          parent = parent.parentElement;
+        }
+      }
+    }
+  });
+
+  // Hämtar synlig text från resten av sidan.
+  const pageText =
+    await page.locator("body").innerText();
+
+  // Skickar texten till LanguageTool.
+  const textCheckResult =
+    await checkText(pageText);
+
+  // Lägger till resultatet i QA-rapporten.
+  results.push({
+    name: "Text / stavning",
+    status: textCheckResult.status,
+    message:
+      textCheckResult.errors > 0
+        ? `${textCheckResult.errors} möjliga textfel hittades`
+        : "Inga stavnings- eller grammatikfel hittades",
+  });
   // 6. Kontrollerar interna och externa länkar
   console.log("\n--- LÄNKAR ---");
 
