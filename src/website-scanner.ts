@@ -13,6 +13,7 @@ import { checkSEO } from "./checks/seo";
 import { checkPerformance } from "./checks/performance";
 import { checkResponsive } from "./checks/responsive";
 import { checkCookieGdpr } from "./checks/cookie-gdpr";
+import { checkSecurity } from "./checks/security";
 
 import {
   printQAReport,
@@ -188,6 +189,18 @@ export async function scanWebsite(
         "Ingen Cookie- eller Integritetspolicy hittades",
     });
   }
+  // ==============================
+// HTTPS / SECURITY
+// ==============================
+
+const securityResult =
+  await checkSecurity(url);
+
+results.push({
+  name: "HTTPS / Security",
+  status: securityResult.status,
+  message: securityResult.message,
+});
 
   // 6. Kontrollerar interna och externa länkar
   console.log("\n--- LÄNKAR ---");
