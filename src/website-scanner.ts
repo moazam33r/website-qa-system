@@ -17,6 +17,7 @@ import { checkSecurity } from "./checks/security";
 import { checkDomains } from "./checks/domains";
 import { searchSimilarDomains } from "./checks/similar-domains";
 import { checkText } from "./checks/text-check";
+import { analyzeQAResults } from "./ai/qa-analyzer";
 
 import {
   printQAReport,
@@ -355,47 +356,48 @@ export async function scanWebsite(
   // LIKNANDE DOMÄNER / FÖRETAGSNAMN
   // ==============================
 
-if (companyName) {
+  if (companyName) {
 
-  const similarDomainsResult =
-    await searchSimilarDomains(
-      url,
-      companyName
-    );
+    const similarDomainsResult =
+      await searchSimilarDomains(
+        url,
+        companyName
+      );
 
-  if (similarDomainsResult.found > 0) {
+    if (similarDomainsResult.found > 0) {
 
-    results.push({
-      name: "Liknande domäner",
-      status: "WARNING",
-      message:
-        `${similarDomainsResult.found} möjliga liknande domäner hittades`,
-    });
+      results.push({
+        name: "Liknande domäner",
+        status: "WARNING",
+        message:
+          `${similarDomainsResult.found} möjliga liknande domäner hittades`,
+      });
+
+    } else {
+
+      results.push({
+        name: "Liknande domäner",
+        status: "PASS",
+        message:
+          "Inga andra domäner hittades",
+      });
+    }
 
   } else {
 
     results.push({
       name: "Liknande domäner",
-      status: "PASS",
+      status: "WARNING",
       message:
-        "Inga andra domäner hittades",
+        "Företagsnamn kunde inte hittas",
     });
+
+    console.log(
+      "\n⚠ Kunde inte hitta ett företagsnamn för kontroll av liknande domäner."
+    );
   }
 
-} else {
-
-  results.push({
-    name: "Liknande domäner",
-    status: "WARNING",
-    message:
-      "Företagsnamn kunde inte hittas",
-  });
-
-  console.log(
-    "\n⚠ Kunde inte hitta ett företagsnamn för kontroll av liknande domäner."
-  );
-  }
-     // 5.5. Kontrollerar stavning och grammatik
+  // 5.5. Kontrollerar stavning och grammatik
   console.log("\n--- TEXT / STAVNING ---");
 
   // Tar bort Google-recensioner från sidan innan texten kontrolleras.
@@ -451,6 +453,7 @@ if (companyName) {
         ? `${textCheckResult.errors} möjliga textfel hittades`
         : "Inga stavnings- eller grammatikfel hittades",
   });
+
   // 6. Kontrollerar interna och externa länkar
   console.log("\n--- LÄNKAR ---");
 
@@ -733,13 +736,22 @@ if (companyName) {
     });
   }
 
-  // Skriver ut den färdiga QA-rapporten
+  // Analyserar alla QA-resultat med den lokala AI-modellen.
+  console.log("\n--- AI-ANALYS ---");
+
+  const aiAnalysis =
+    await analyzeQAResults(results);
+
+  // Skriver ut AI:ns analys.
+  console.log(aiAnalysis);
+
+  // Skriver ut den färdiga QA-rapporten.
   printQAReport(
     url,
     results
   );
 
-  // Returnerar grundläggande information
+  // Returnerar grundläggande information samt AI-analysen.
   return {
     url: pageResult.url,
     status: pageResult.status,
@@ -747,5 +759,6 @@ if (companyName) {
     links: pageResult.links,
     pages: pageResult.pages,
     results,
+    aiAnalysis,
   };
 }
