@@ -4,13 +4,14 @@ import { checkPages } from "../src/checks/pages";
 
 test("Crawler hittar sidor från undersidor", async ({ page }) => {
 
-  // Skapar en liten testwebbplats med tre sidor
+  // Skapar en liten testwebbplats med tre sidor.
+  // Startsidan länkar till sida 1 och sida 1 länkar till sida 2.
   await page.route("https://qa-test.local/**", async (route) => {
 
-    // Hämtar vilken sida som efterfrågas
+    // Hämtar vilken sida som efterfrågas.
     const url = route.request().url();
 
-    // Startsidan länkar till sida 1
+    // Startsidan länkar till sida 1.
     if (url === "https://qa-test.local/") {
 
       await route.fulfill({
@@ -32,7 +33,7 @@ test("Crawler hittar sidor från undersidor", async ({ page }) => {
       return;
     }
 
-    // Sida 1 länkar till sida 2
+    // Sida 1 länkar till sida 2.
     if (url === "https://qa-test.local/sida-1/") {
 
       await route.fulfill({
@@ -54,7 +55,7 @@ test("Crawler hittar sidor från undersidor", async ({ page }) => {
       return;
     }
 
-    // Sida 2 har inga nya länkar
+    // Sida 2 har inga nya länkar.
     if (url === "https://qa-test.local/sida-2/") {
 
       await route.fulfill({
@@ -75,7 +76,7 @@ test("Crawler hittar sidor från undersidor", async ({ page }) => {
       return;
     }
 
-    // Alla andra adresser ger 404
+    // Alla andra adresser ger 404.
     await route.fulfill({
       status: 404,
       contentType: "text/html",
@@ -83,13 +84,26 @@ test("Crawler hittar sidor från undersidor", async ({ page }) => {
     });
   });
 
-  // Startar crawlern från startsidan
+  // Startar crawlern från startsidan.
   const result = await checkPages(
     page,
     "https://qa-test.local/"
   );
 
-  // Hämtar alla hittade URL:er
+  // Kontrollerar att resultatet innehåller
+  // de viktigaste egenskaperna.
+  expect(result).toHaveProperty("links");
+  expect(result).toHaveProperty("pages");
+  expect(result).toHaveProperty("passedPages");
+  expect(result).toHaveProperty("failedPages");
+
+  // Kontrollerar att rätt datatyper returneras.
+  expect(Array.isArray(result.links)).toBe(true);
+  expect(Array.isArray(result.pages)).toBe(true);
+  expect(typeof result.passedPages).toBe("number");
+  expect(typeof result.failedPages).toBe("number");
+
+  // Hämtar alla hittade URL:er.
   const pages = result.links;
 
   console.log("\nCrawler test - hittade sidor:");
@@ -98,7 +112,7 @@ test("Crawler hittar sidor från undersidor", async ({ page }) => {
     console.log("-", url);
   });
 
-  // Kontrollerar att crawlern hittade alla tre sidor
+  // Kontrollerar att crawlern hittade alla tre sidor.
   expect(pages).toContain(
     "https://qa-test.local/"
   );
@@ -111,6 +125,16 @@ test("Crawler hittar sidor från undersidor", async ({ page }) => {
     "https://qa-test.local/sida-2/"
   );
 
-  // Vi förväntar oss exakt tre sidor
+  // Vi förväntar oss exakt tre sidor.
   expect(pages).toHaveLength(3);
+
+  // Alla tre mockade sidor ska fungera.
+  expect(result.passedPages).toBe(3);
+  expect(result.failedPages).toBe(0);
+
+  // Antalet lyckade och misslyckade sidor
+  // ska motsvara det totala antalet crawlad sidor.
+  expect(
+    result.passedPages + result.failedPages
+  ).toBe(result.pages.length);
 });
