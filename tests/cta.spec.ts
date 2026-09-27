@@ -4,7 +4,7 @@ import { checkCTA } from "../src/checks/cta";
 
 test("CTA-test hittar fungerande och trasiga CTA-länkar", async ({ page }) => {
 
-  // Mockar startsidan
+  // Mockar startsidan så att testet inte behöver använda en riktig webbplats.
   await page.route(
     "https://qa-test.local/",
     async (route) => {
@@ -41,14 +41,16 @@ test("CTA-test hittar fungerande och trasiga CTA-länkar", async ({ page }) => {
     }
   );
 
-  // Mockar HTTP-anropen som görs av CTA-kontrollen
+  // Sparar den riktiga GET-funktionen så att
+  // övriga anrop kan hanteras normalt.
   const originalGet = page.request.get.bind(
     page.request
   );
 
+  // Mockar HTTP-svaren för CTA-länkarna.
   page.request.get = async (url: string) => {
 
-    // Fungerande CTA
+    // Fungerande CTA.
     if (url.includes("/fungerar/")) {
 
       return {
@@ -56,7 +58,7 @@ test("CTA-test hittar fungerande och trasiga CTA-länkar", async ({ page }) => {
       } as any;
     }
 
-    // Trasig CTA
+    // Trasig CTA.
     if (url.includes("/trasig/")) {
 
       return {
@@ -64,19 +66,31 @@ test("CTA-test hittar fungerande och trasiga CTA-länkar", async ({ page }) => {
       } as any;
     }
 
-    // Övriga länkar
+    // Övriga länkar använder den riktiga funktionen.
     return originalGet(url);
   };
 
-  // Kör CTA-kontrollen
+  // Kör CTA-kontrollen och sparar resultatet.
   const result = await checkCTA(
     page,
     ["https://qa-test.local/"]
   );
 
-  // En CTA ska fungera
-  expect(result.passed).toBe(1);
+  // Kontrollerar att resultatet innehåller
+  // antal fungerande och trasiga CTA-länkar.
+  expect(result).toHaveProperty("passed");
+  expect(result).toHaveProperty("failed");
 
-  // En CTA ska vara trasig
+  // Kontrollerar att värdena är nummer.
+  expect(typeof result.passed).toBe("number");
+  expect(typeof result.failed).toBe("number");
+
+  // Kontrollerar att räknarna inte kan vara negativa.
+  expect(result.passed).toBeGreaterThanOrEqual(0);
+  expect(result.failed).toBeGreaterThanOrEqual(0);
+
+  // Testet ska hitta exakt en fungerande CTA
+  // och exakt en trasig CTA i vår mockade sida.
+  expect(result.passed).toBe(1);
   expect(result.failed).toBe(1);
 });
