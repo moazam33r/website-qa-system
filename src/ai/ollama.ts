@@ -1,88 +1,135 @@
-// Koppling till Ollama som körs lokalt på datorn.
-// Funktionen skickar en text till Qwen3 och läser AI-svaret
-// medan modellen arbetar istället för att vänta på hela svaret.
+// Koppling till Ollama via en separat Node-process.
+// AI-anropet körs i ollama-worker.ts utanför Playwright-processen.
+//
+// Detta gör kommunikationen med den lokala AI-modellen
+// mer stabil när QA-systemet körs från Playwright.
 
-const OLLAMA_URL = "http://localhost:11434/api/chat";
-const MODEL = "qwen3:4b";
+import {
+  spawn,
+} from "child_process";
 
-// Skickar en fråga till den lokala AI-modellen.
+import {
+  resolve,
+} from "path";
+
+// Anropar Ollama genom en separat Node-process.
 export async function askOllama(
   prompt: string
 ): Promise<string> {
-  // Skickar frågan till Ollama och ber om ett streamat svar.
-  const response = await fetch(OLLAMA_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      stream: true,
-    }),
-  });
 
-  // Kontrollerar att Ollama svarade korrekt.
-  if (!response.ok) {
-    throw new Error(
-      `Ollama svarade med status ${response.status}`
+  // Sökväg till worker-filen.
+  const workerPath =
+    resolve(
+      __dirname,
+      "ollama-worker.ts"
     );
-  }
 
-  // Kontrollerar att Ollama skickar tillbaka en stream.
-  if (!response.body) {
-    throw new Error("Ollama skickade inget svar.");
-  }
+  // Hämtar tsx CLI direkt från projektets node_modules.
+  // Det är samma motor som används när vi kör "npx tsx".
+  const tsxCli =
+    resolve(
+      process.cwd(),
+      "node_modules",
+      "tsx",
+      "dist",
+      "cli.mjs"
+    );
 
-  // Läser svaret bit för bit.
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+  return new Promise(
+    (resolvePromise, reject) => {
 
-  // Här samlar vi hela AI-svaret.
-  let fullResponse = "";
+      // Startar worker-processen.
+      const worker =
+        spawn(
+          process.execPath,
+          [
+            tsxCli,
+            workerPath,
+            prompt,
+          ],
+          {
+            stdio: [
+              "ignore",
+              "pipe",
+              "pipe",
+            ],
 
-  while (true) {
-    const { done, value } = await reader.read();
+            // Förhindrar att ett extra terminalfönster
+            // öppnas när systemet körs i Windows.
+            windowsHide: true,
+          }
+        );
 
-    // Streamen är färdig.
-    if (done) {
-      break;
-    }
+      let output = "";
+      let errorOutput = "";
 
-    // Gör om datan från Ollama till text.
-    const chunk = decoder.decode(value, {
-      stream: true,
-    });
-
-    // Ollama skickar ett JSON-objekt per rad.
-    const lines = chunk
-      .split("\n")
-      .filter((line) => line.trim());
-
-    // Läser varje JSON-rad.
-    for (const line of lines) {
-      try {
-        const data = JSON.parse(line);
-
-        // Lägger till texten från AI:n.
-        if (data.message?.content) {
-          fullResponse += data.message.content;
+      // Tar emot AI-svaret från worker-processen.
+      worker.stdout.on(
+        "data",
+        (data) => {
+          output +=
+            data.toString();
         }
-      } catch {
-        // Hoppar över en rad om den inte är komplett JSON.
-      }
+      );
+
+      // Samlar eventuella fel från worker-processen.
+      worker.stderr.on(
+        "data",
+        (data) => {
+          errorOutput +=
+            data.toString();
+        }
+      );
+
+      // När worker-processen avslutas.
+      worker.on(
+        "close",
+        (code) => {
+
+          // Om worker-processen misslyckades
+          // skickas felet vidare till QA-systemet.
+          if (code !== 0) {
+
+            reject(
+              new Error(
+                errorOutput.trim() ||
+                `Ollama worker avslutades med kod ${code}`
+              )
+            );
+
+            return;
+          }
+
+          // Hämtar AI-svaret.
+          const result =
+            output.trim();
+
+          // Kontrollerar att ett svar faktiskt kom tillbaka.
+          if (!result) {
+
+            reject(
+              new Error(
+                "Ollama worker skickade ett tomt svar."
+              )
+            );
+
+            return;
+          }
+
+          // Returnerar AI-svaret till QA-systemet.
+          resolvePromise(
+            result
+          );
+        }
+      );
+
+      // Hanterar om worker-processen inte kan startas.
+      worker.on(
+        "error",
+        (error) => {
+          reject(error);
+        }
+      );
     }
-  }
-
-  // Kontrollerar att AI:n faktiskt skickade text.
-  if (!fullResponse.trim()) {
-    throw new Error("Ollama skickade ett tomt AI-svar.");
-  }
-
-  return fullResponse;
+  );
 }
