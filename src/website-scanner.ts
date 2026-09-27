@@ -736,20 +736,44 @@ export async function scanWebsite(
     });
   }
 
-  // Analyserar alla QA-resultat med den lokala AI-modellen.
-  console.log("\n--- AI-ANALYS ---");
+// Analyserar alla QA-resultat med den lokala AI-modellen.
+// Om AI:n inte fungerar ska den vanliga QA-rapporten ändå visas.
+console.log("\n--- AI-ANALYS ---");
 
-  const aiAnalysis =
+let aiAnalysis =
+  "AI-analys kunde inte genomföras.";
+
+try {
+
+  // Försöker analysera QA-resultaten med Ollama.
+  aiAnalysis =
     await analyzeQAResults(results);
 
-  // Skriver ut AI:ns analys.
+  // Visar AI:ns analys om den lyckades.
   console.log(aiAnalysis);
 
-  // Skriver ut den färdiga QA-rapporten.
-  printQAReport(
-    url,
-    results
+} catch (error) {
+
+  // AI-fel ska inte stoppa resten av QA-systemet.
+  console.log(
+    "⚠ AI-analysen kunde inte genomföras."
   );
+
+  // Lägger till en WARNING i QA-rapporten.
+  results.push({
+    name: "AI-analys",
+    status: "WARNING",
+    message:
+      "AI-analysen kunde inte genomföras",
+  });
+}
+
+// Skriver alltid ut den färdiga QA-rapporten,
+// även om AI-analysen misslyckades.
+printQAReport(
+  url,
+  results
+);
 
   // Returnerar grundläggande information samt AI-analysen.
   return {
