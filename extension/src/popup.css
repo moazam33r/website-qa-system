@@ -3,7 +3,6 @@ body {
   width: 360px;
   margin: 0;
   padding: 20px;
-
   font-family: Arial, sans-serif;
 }
 
@@ -31,11 +30,8 @@ h1 {
 /* URL-fält */
 input {
   padding: 10px;
-
   font-size: 14px;
-
   box-sizing: border-box;
-
   width: 100%;
 }
 
@@ -43,9 +39,7 @@ input {
 /* Startknapp */
 button {
   padding: 10px;
-
   font-size: 14px;
-
   cursor: pointer;
 }
 
@@ -57,13 +51,67 @@ button:disabled {
 }
 
 
+/* Område för progressbaren */
+.progress-container {
+  margin-top: 10px;
+}
+
+
+/* Rad som innehåller status och procent */
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+
+/* Bakgrunden till progressbaren */
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+
+/* Själva progressen */
+.progress-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: 4px;
+
+  /* Gör progressen mjuk när den ökar */
+  transition: width 0.3s ease;
+}
+
+
+/* PDF-knappen */
+.pdf-button {
+  display: block;
+  padding: 10px;
+  margin-top: 10px;
+  text-align: center;
+  text-decoration: none;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+
 /* Område för statusmeddelanden */
 .status {
   margin-top: 10px;
 }
 
 
-/* Område för QA-resultatet */
+/* Område där QA-resultatet visas */
 .results {
   margin-top: 10px;
+}
+
+
+/* Döljer element som har hidden-attributet */
+[hidden] {
+  display: none;
 }

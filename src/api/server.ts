@@ -4,10 +4,26 @@ import express from "express";
 // Importerar Chromium från Playwright.
 import { chromium } from "@playwright/test";
 
+// Importerar Node.js filsystem.
+// Används för att kontrollera att PDF-filer finns.
+import fs from "fs";
+
+// Importerar path för att skapa säkra och korrekta
+// sökvägar till våra PDF-rapporter.
+import path from "path";
+
 // Importerar vår befintliga QA-motor.
-// Denna funktion gör själva webbplatsgranskningen.
+// Denna funktion genomför hela webbplatsgranskningen.
 import { scanWebsite } from "../website-scanner";
 
+// Importerar PDF-generatorn.
+// Den skapar PDF-rapporten från QA-resultaten.
+import { createPDFReport } from "../report/pdf-report";
+
+
+// --------------------------------------------------
+// EXPRESS
+// --------------------------------------------------
 
 // Skapar Express-applikationen.
 const app = express();
@@ -56,7 +72,8 @@ app.use((req, res, next) => {
     return res.sendStatus(204);
   }
 
-  // Fortsätter till nästa middleware eller endpoint.
+  // Fortsätter till nästa middleware
+  // eller endpoint.
   next();
 });
 
@@ -65,12 +82,14 @@ app.use((req, res, next) => {
 // HEALTH CHECK
 // --------------------------------------------------
 
-// Test-endpoint.
+// Endpoint som används för att kontrollera
+// att API-servern fungerar.
 //
-// Används för att kontrollera att API-servern fungerar.
+// GET /api/health
+
 app.get("/api/health", (_req, res) => {
 
-  // Skickar tillbaka ett enkelt svar.
+  // Skickar tillbaka ett enkelt JSON-svar.
   res.json({
     status: "ok",
     message: "Website QA System API fungerar.",
@@ -107,7 +126,8 @@ app.post("/api/scan", async (req, res) => {
   }
 
 
-  // Tar bort eventuella mellanslag runt URL:en.
+  // Tar bort eventuella mellanslag
+  // runt URL:en.
   const websiteUrl = url.trim();
 
 
@@ -116,14 +136,16 @@ app.post("/api/scan", async (req, res) => {
   if (!/^https?:\/\//i.test(websiteUrl)) {
 
     return res.status(400).json({
-      error: "URL måste börja med http:// eller https://",
+      error:
+        "URL måste börja med http:// eller https://",
     });
   }
 
 
   // Variabler för browser och page.
   //
-  // De stängs senare även om något går fel.
+  // De används även i finally-blocket
+  // för att alltid stänga Playwright korrekt.
   let browser;
   let page;
 
@@ -132,9 +154,16 @@ app.post("/api/scan", async (req, res) => {
 
     // Skriver information till serverns terminal.
     console.log("\n========================================");
-    console.log("          API QA SCANNING");
+
+    console.log(
+      "          API QA SCANNING"
+    );
+
     console.log("========================================");
-    console.log(`\nTestar: ${websiteUrl}`);
+
+    console.log(
+      `\nTestar: ${websiteUrl}`
+    );
 
 
     // Startar Chromium.
@@ -147,16 +176,72 @@ app.post("/api/scan", async (req, res) => {
 
     // Kör vårt befintliga QA-system.
     //
-    // Alla kontroller och AI-analys sker fortfarande
-    // inne i scanWebsite().
+    // Här genomförs alla kontroller:
+    // SEO, länkar, bilder, formulär,
+    // responsivitet, prestanda, Google,
+    // sociala medier, AI-analys osv.
     const result = await scanWebsite(
       page,
       websiteUrl
     );
 
 
-    // Returnerar resultatet som JSON.
-    return res.status(200).json(result);
+    // Skapar PDF-rapporten från samma resultat
+    // som används av QA-systemet.
+    const pdfPath = await createPDFReport({
+
+      // Webbplatsen som testades.
+      websiteUrl: result.url,
+
+      // Alla QA-resultat.
+      results: result.results,
+
+      // AI-analysen.
+      aiAnalysis: result.aiAnalysis,
+    });
+
+
+    // Skriver information om PDF-filen
+    // till serverns terminal.
+    console.log(
+      `\nPDF-rapport skapad: ${pdfPath}`
+    );
+
+
+    // Hämtar endast filnamnet från sökvägen.
+    //
+    // Exempel:
+    //
+    // C:\...\reports\QA-Report-digitalkontakt.se.pdf
+    //
+    // blir:
+    //
+    // QA-Report-digitalkontakt.se.pdf
+    const pdfFilename =
+      path.basename(pdfPath);
+
+
+    // Skapar URL:en som Chrome Extension
+    // senare kommer att använda för att
+    // öppna PDF-rapporten.
+    const pdfUrl =
+      `http://localhost:${PORT}/api/reports/${encodeURIComponent(pdfFilename)}`;
+
+
+    // Returnerar hela QA-resultatet tillsammans
+    // med PDF-informationen.
+    return res.status(200).json({
+
+      // Behåller alla resultat från scanWebsite().
+      ...result,
+
+      // Behåller sökvägen på servern.
+      pdfPath,
+
+      // URL som klienten kan använda
+      // för att öppna PDF-rapporten.
+      pdfUrl,
+    });
 
 
   } catch (error) {
@@ -171,7 +256,9 @@ app.post("/api/scan", async (req, res) => {
 
     // Returnerar ett tydligt fel till klienten.
     return res.status(500).json({
-      error: "QA-skanningen kunde inte genomföras.",
+
+      error:
+        "QA-skanningen kunde inte genomföras.",
 
       message:
         error instanceof Error
@@ -220,7 +307,8 @@ app.post("/api/scan-csv", async (req, res) => {
   const { urls } = req.body;
 
 
-  // Kontrollerar att urls finns och är en array.
+  // Kontrollerar att urls finns
+  // och faktiskt är en array.
   if (!Array.isArray(urls)) {
 
     return res.status(400).json({
@@ -247,7 +335,8 @@ app.post("/api/scan-csv", async (req, res) => {
   );
 
 
-  // Om någon URL är ogiltig avbryter vi requesten.
+  // Om någon URL är ogiltig
+  // avbryter vi requesten.
   if (invalidUrls.length > 0) {
 
     return res.status(400).json({
@@ -257,8 +346,8 @@ app.post("/api/scan-csv", async (req, res) => {
   }
 
 
-  // Array där vi sparar resultatet
-  // för varje webbplats.
+  // Array där vi sparar resultaten
+  // för alla webbplatser.
   const results = [];
 
 
@@ -278,12 +367,18 @@ app.post("/api/scan-csv", async (req, res) => {
       const websiteUrl = url.trim();
 
 
-      // Skriver information till serverns terminal.
-      console.log("\n========================================");
+      // Skriver information till terminalen.
+      console.log(
+        "\n========================================"
+      );
+
       console.log(
         `TESTAR VIA CSV API: ${websiteUrl}`
       );
-      console.log("========================================");
+
+      console.log(
+        "========================================"
+      );
 
 
       // Skapar en ny Playwright-sida.
@@ -292,28 +387,69 @@ app.post("/api/scan-csv", async (req, res) => {
 
       try {
 
-        // Kör samma QA-motor som används av /api/scan.
+        // Kör samma QA-motor som används
+        // av /api/scan.
         const result = await scanWebsite(
           page,
           websiteUrl
         );
 
 
+        // Skapar PDF för webbplatsen.
+        const pdfPath = await createPDFReport({
+
+          // Webbplatsens URL.
+          websiteUrl: result.url,
+
+          // Alla QA-resultat.
+          results: result.results,
+
+          // AI-analysen.
+          aiAnalysis: result.aiAnalysis,
+        });
+
+
+        // Hämtar endast PDF-filens namn.
+        const pdfFilename =
+          path.basename(pdfPath);
+
+
+        // Skapar URL som kan användas
+        // för att öppna PDF-filen.
+        const pdfUrl =
+          `http://localhost:${PORT}/api/reports/${encodeURIComponent(pdfFilename)}`;
+
+
         // Sparar resultatet för webbplatsen.
         results.push({
+
+          // Visar att skanningen lyckades.
           success: true,
+
+          // Alla resultat från QA-systemet.
           ...result,
+
+          // Sökvägen till PDF-filen.
+          pdfPath,
+
+          // URL till PDF-filen.
+          pdfUrl,
         });
 
 
       } catch (error) {
 
-        // Om en webbplats misslyckas fortsätter vi
-        // med nästa webbplats.
+        // Om en webbplats misslyckas
+        // fortsätter vi med nästa webbplats.
         results.push({
+
+          // Visar att just denna skanning misslyckades.
           success: false,
+
+          // URL:en som misslyckades.
           url: websiteUrl,
 
+          // Felmeddelandet.
           error:
             error instanceof Error
               ? error.message
@@ -323,23 +459,29 @@ app.post("/api/scan-csv", async (req, res) => {
 
       } finally {
 
-        // Stänger sidan innan nästa webbplats testas.
+        // Stänger sidan innan nästa
+        // webbplats testas.
         await page.close();
       }
     }
 
 
-    // Returnerar alla resultat när alla webbplatser
-    // har behandlats.
+    // Returnerar alla resultat när
+    // alla webbplatser är klara.
     return res.status(200).json({
+
+      // Antal webbplatser som skickades in.
       total: urls.length,
+
+      // Alla QA-resultat.
       results,
     });
 
 
   } catch (error) {
 
-    // Hanterar fel som påverkar hela CSV-skanningen.
+    // Hanterar fel som påverkar
+    // hela CSV-skanningen.
     console.error(
       "\nCSV API-skanningen misslyckades."
     );
@@ -348,7 +490,9 @@ app.post("/api/scan-csv", async (req, res) => {
 
 
     return res.status(500).json({
-      error: "CSV-skanningen kunde inte genomföras.",
+
+      error:
+        "CSV-skanningen kunde inte genomföras.",
 
       message:
         error instanceof Error
@@ -359,10 +503,93 @@ app.post("/api/scan-csv", async (req, res) => {
 
   } finally {
 
-    // Stänger Chromium när alla webbplatser är klara.
+    // Stänger Chromium när alla webbplatser
+    // har behandlats.
     await browser.close();
   }
 });
+
+
+// --------------------------------------------------
+// PDF-RAPPORT
+// --------------------------------------------------
+
+// Endpoint som låter Chrome Extension
+// öppna en skapad PDF-rapport.
+//
+// Exempel:
+//
+// GET /api/reports/QA-Report-digitalkontakt.se.pdf
+
+app.get(
+  "/api/reports/:filename",
+  (req, res) => {
+
+    // Hämtar filnamnet från URL:en.
+    const filename = req.params.filename;
+
+
+    // Tillåter endast PDF-filer.
+    if (
+      !filename
+        .toLowerCase()
+        .endsWith(".pdf")
+    ) {
+
+      return res.status(400).json({
+        error:
+          "Endast PDF-filer kan hämtas.",
+      });
+    }
+
+
+    // Säkerhetskontroll:
+    //
+    // Vi tillåter endast själva filnamnet.
+    // Detta förhindrar att någon försöker
+    // använda ../ för att komma åt andra filer.
+    if (
+      path.basename(filename) !== filename
+    ) {
+
+      return res.status(400).json({
+        error:
+          "Ogiltigt filnamn.",
+      });
+    }
+
+
+    // Skapar sökvägen till vår PDF-mapp.
+    const reportsDirectory =
+      path.join(
+        process.cwd(),
+        "reports"
+      );
+
+
+    // Skapar den fullständiga sökvägen
+    // till PDF-filen.
+    const pdfPath =
+      path.join(
+        reportsDirectory,
+        filename
+      );
+
+
+    // Kontrollerar att PDF-filen finns.
+    if (!fs.existsSync(pdfPath)) {
+
+      return res.status(404).json({
+        error:
+          "PDF-rapporten kunde inte hittas.",
+      });
+    }
+
+
+    // Skickar PDF-filen till webbläsaren.
+    return res.sendFile(pdfPath);
+  }
+);
 
 
 // --------------------------------------------------
@@ -372,9 +599,17 @@ app.post("/api/scan-csv", async (req, res) => {
 // Startar API-servern.
 app.listen(PORT, () => {
 
-  console.log("\n========================================");
-  console.log("       WEBSITE QA SYSTEM API");
-  console.log("========================================");
+  console.log(
+    "\n========================================"
+  );
+
+  console.log(
+    "       WEBSITE QA SYSTEM API"
+  );
+
+  console.log(
+    "========================================"
+  );
 
   console.log(
     `\nAPI-server körs på http://localhost:${PORT}`
@@ -390,5 +625,9 @@ app.listen(PORT, () => {
 
   console.log(
     `CSV endpoint: POST http://localhost:${PORT}/api/scan-csv`
+  );
+
+  console.log(
+    `PDF endpoint: GET http://localhost:${PORT}/api/reports/:filename`
   );
 });

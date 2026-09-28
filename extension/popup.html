@@ -43,11 +43,53 @@
       Start QA
     </button>
 
+    <!-- Område för loading/progress -->
+    <div id="progressContainer" class="progress-container" hidden>
+
+      <!-- Text som visar aktuell status -->
+      <div class="progress-info">
+
+        <!-- Statusmeddelande -->
+        <span id="progressStatus">
+          QA-skanning pågår...
+        </span>
+
+        <!-- Aktuell procent -->
+        <span id="progressPercent">
+          0%
+        </span>
+
+      </div>
+
+      <!-- Bakgrund för progressbaren -->
+      <div class="progress-bar">
+
+        <!-- Själva progressen -->
+        <div
+          id="progressFill"
+          class="progress-fill"
+        ></div>
+
+      </div>
+
+    </div>
+
     <!-- Område där statusmeddelanden visas -->
     <div id="status" class="status"></div>
 
     <!-- Område där QA-resultatet visas -->
     <div id="results" class="results"></div>
+
+    <!-- Knapp för att öppna den genererade PDF-rapporten -->
+    <a
+      id="pdfButton"
+      class="pdf-button"
+      href="#"
+      target="_blank"
+      hidden
+    >
+      Ladda ner PDF
+    </a>
 
   </main>
 
