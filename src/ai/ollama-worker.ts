@@ -10,6 +10,7 @@ import http from "http";
 const prompt =
   process.argv.slice(2).join(" ");
 
+// Kontrollerar att en prompt faktiskt skickades.
 if (!prompt) {
   console.error(
     "Ingen prompt skickades till Ollama."
@@ -20,10 +21,29 @@ if (!prompt) {
 
 // Skapar JSON-datan som skickas till Ollama.
 const body = JSON.stringify({
+  // Använder Qwen3 4B som lokal modell.
   model: "qwen3:4b",
 
+  // Skickar både systeminstruktion och användarprompt.
   messages: [
     {
+      // Systemrollen ger modellen grundregler
+      // innan den får själva QA-prompten.
+      role: "system",
+
+      content:
+        "Du är en svensk QA-analysassistent. " +
+        "Returnera endast den färdiga QA-analysen. " +
+        "Svara endast på svenska. " +
+        "Skriv aldrig ditt resonemang eller din arbetsprocess. " +
+        "Skriv aldrig text som 'Okay', 'Let's', 'The user', " +
+        "'First, I need to' eller liknande. " +
+        "Börja direkt med '1. Vad fungerar bra'.",
+    },
+
+    {
+      // Här skickas den detaljerade QA-prompten
+      // från analyzeQAResults().
       role: "user",
       content: prompt,
     },
@@ -32,13 +52,15 @@ const body = JSON.stringify({
   // Vi vill ha hela svaret på en gång.
   stream: false,
 
-  // Qwen3 behöver inte använda sitt
-  // längre thinking-läge för denna QA-analys.
+  // Stänger av Qwen3:s thinking-läge.
   think: false,
 
   // Begränsar hur långt AI-svaret får bli.
   options: {
-    num_predict: 500,
+    num_predict: 350,
+
+    // Lägre temperatur ger ett mer förutsägbart svar.
+    temperature: 0.2,
   },
 });
 
@@ -60,7 +82,7 @@ const request =
       },
 
       // Ger Ollama upp till 180 sekunder
-      // om modellen fortfarande behöver tid.
+      // om modellen behöver mer tid.
       timeout: 180000,
     },
 
@@ -102,7 +124,7 @@ const request =
               );
 
             // Hämtar själva AI-svaret.
-            const answer =
+            let answer =
               data.message?.content ||
               "";
 
@@ -116,7 +138,31 @@ const request =
               process.exit(1);
             }
 
-            // Skriver endast ut AI-svaret.
+            // Tar bort eventuella <think>-block
+            // om modellen trots allt skickar sådana.
+            answer =
+              answer.replace(
+                /<think>[\s\S]*?<\/think>/gi,
+                ""
+              );
+
+            // Letar efter början på den riktiga
+            // QA-analysen.
+            const startIndex =
+              answer.indexOf(
+                "1. Vad fungerar bra"
+              );
+
+            // Tar bort eventuell text som modellen
+            // skrev innan själva QA-analysen.
+            if (startIndex !== -1) {
+              answer =
+                answer
+                  .slice(startIndex)
+                  .trim();
+            }
+
+            // Skriver endast ut det färdiga AI-svaret.
             console.log(answer);
 
           } catch (error) {

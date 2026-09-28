@@ -74,40 +74,56 @@ export async function scanWebsite(
   }
 
   // 2. Kontrollerar SEO
-  console.log("\n--- SEO ---");
+console.log("\n--- SEO ---");
 
-  const seoResult = await checkSEO(
-    page,
-    pages
-  );
+const seoResult = await checkSEO(
+  page,
+  pages
+);
 
-  if (seoResult.failed.length > 0) {
+if (seoResult.failed.length > 0) {
 
-    results.push({
-      name: "SEO",
-      status: "FAIL",
-      message:
-        `${seoResult.failed.length} tekniska SEO-fel hittades`,
-    });
+  // Tar med både antal och detaljerade SEO-fel.
+  const seoDetails =
+    seoResult.failed
+      .map((error) => `- ${error}`)
+      .join("\n");
 
-  } else if (seoResult.warnings.length > 0) {
+  results.push({
+    name: "SEO",
+    status: "FAIL",
+    message:
+      `${seoResult.failed.length} tekniska SEO-fel hittades\n` +
+      seoDetails,
+  });
 
-    results.push({
-      name: "SEO",
-      status: "WARNING",
-      message:
-        `${seoResult.warnings.length} SEO-varningar hittades`,
-    });
+} else if (seoResult.warnings.length > 0) {
 
-  } else {
+  // Tar med både antal och detaljerade SEO-varningar.
+  // Detta gör att AI:n kan se exakt vilka sidor som har problem.
+  const seoDetails =
+    seoResult.warnings
+      .map((warning) => `- ${warning}`)
+      .join("\n");
 
-    results.push({
-      name: "SEO",
-      status: "PASS",
-      message:
-        `${seoResult.passed.length} SEO-kontroller godkända`,
-    });
-  }
+  results.push({
+    name: "SEO",
+    status: "WARNING",
+    message:
+      `${seoResult.warnings.length} SEO-varningar hittades\n` +
+      seoDetails,
+  });
+
+} else {
+
+  // Om inga problem finns visas det vanliga PASS-resultatet.
+  results.push({
+    name: "SEO",
+    status: "PASS",
+    message:
+      `${seoResult.passed.length} SEO-kontroller godkända`,
+  });
+}
 
   // 3. Kontrollerar webbplatsens prestanda
   const performanceResult =

@@ -1,13 +1,13 @@
 import { Page } from "@playwright/test";
 
-// Kontrollerar länkar till sociala medier
+// Kontrollerar länkar till sociala medier.
 export async function checkSocialMedia(
   page: Page,
   pages: string[],
   websiteUrl: string
 ) {
 
-  // Plattformar vi letar efter
+  // Plattformar som systemet letar efter.
   const platforms = [
     {
       name: "Facebook",
@@ -35,10 +35,11 @@ export async function checkSocialMedia(
     },
   ];
 
-  // Sparar hittade sociala medier
+  // Sparar hittade sociala medier.
   const found = new Map<string, string>();
 
-  // Sparar sociala medier som inte verkar tillhöra företaget
+  // Sparar sociala medier som inte kan verifieras
+  // eller som inte verkar tillhöra företaget.
   const failed: {
     platform: string;
     url: string;
@@ -47,18 +48,45 @@ export async function checkSocialMedia(
 
   console.log("\nSocial media check:");
 
-  // Hämtar webbplatsens domän
+  // Hämtar webbplatsens domän.
   const websiteDomain =
     new URL(websiteUrl).hostname
       .replace(/^www\./, "")
       .toLowerCase();
 
+  // Hämtar själva domännamnet.
   const domainName =
     websiteDomain
       .split(".")[0]
       .toLowerCase();
 
-  // Hittar sociala medier i text eller HTML
+  // Hämtar startsidans titel.
+  // Detta görs innan vi börjar gå igenom alla sidor,
+  // så att vi inte råkar använda titeln från den sista sidan.
+  let websiteTitle = "";
+
+  try {
+
+    await page.goto(websiteUrl, {
+      waitUntil: "domcontentloaded",
+    });
+
+    websiteTitle = await page.title();
+
+  } catch {
+
+    // Om startsidans titel inte kan hämtas
+    // fortsätter systemet ändå.
+  }
+
+  // Försöker hitta företagsnamnet från startsidans titel.
+  const companyName =
+    websiteTitle
+      .split("|")[0]
+      .trim()
+      .toLowerCase();
+
+  // Hittar sociala medier i text eller HTML.
   const findSocialMedia = (
     content: string
   ) => {
@@ -67,6 +95,7 @@ export async function checkSocialMedia(
 
       for (const keyword of platform.keywords) {
 
+        // Kontrollerar om plattformens domän finns.
         if (
           content
             .toLowerCase()
@@ -74,6 +103,7 @@ export async function checkSocialMedia(
           !found.has(platform.name)
         ) {
 
+          // Försöker hitta en komplett URL.
           const urlMatch = content.match(
             new RegExp(
               `https?://[^"'\\s<>]*${keyword.replace(".", "\\.")}[^"'\\s<>]*`,
@@ -81,13 +111,17 @@ export async function checkSocialMedia(
             )
           );
 
-          const socialUrl =
-            urlMatch?.[0] ?? keyword;
+          // Vi sparar bara en riktig URL.
+          // Tidigare användes själva keywordet som fallback,
+          // exempelvis "instagram.com", vilket sedan gjorde
+          // att new URL() misslyckades.
+          if (urlMatch?.[0]) {
 
-          found.set(
-            platform.name,
-            socialUrl
-          );
+            found.set(
+              platform.name,
+              urlMatch[0]
+            );
+          }
 
           break;
         }
@@ -95,7 +129,7 @@ export async function checkSocialMedia(
     }
   };
 
-  // Lyssnar efter Trustindex-data
+  // Lyssnar efter Trustindex-data.
   page.on("response", async (response) => {
 
     const responseUrl = response.url();
@@ -110,13 +144,16 @@ export async function checkSocialMedia(
         const content =
           await response.text();
 
-        const data = JSON.parse(content);
+        const data =
+          JSON.parse(content);
 
         if (data.sources) {
 
-          for (const sourceKey of Object.keys(
-            data.sources
-          )) {
+          for (
+            const sourceKey of Object.keys(
+              data.sources
+            )
+          ) {
 
             const source =
               data.sources[sourceKey];
@@ -124,7 +161,10 @@ export async function checkSocialMedia(
             const profileUrl =
               source?.user?.profile_url;
 
-            if (!profileUrl) continue;
+            // Hoppar över poster utan profil-URL.
+            if (!profileUrl) {
+              continue;
+            }
 
             for (const platform of platforms) {
 
@@ -141,6 +181,7 @@ export async function checkSocialMedia(
                 !found.has(platform.name)
               ) {
 
+                // Sparar den riktiga profil-URL:en.
                 found.set(
                   platform.name,
                   profileUrl
@@ -151,42 +192,44 @@ export async function checkSocialMedia(
         }
 
       } catch {
-        // Ignorerar om JSON inte kan läsas
+
+        // Ignorerar JSON som inte går att läsa.
       }
     }
   });
 
-  // Går igenom alla sidor
+  // Går igenom alla sidor på webbplatsen.
   for (const pageUrl of pages) {
 
     await page.goto(pageUrl, {
       waitUntil: "domcontentloaded",
     });
 
-    // Hämtar vanliga länkar
-    const links = await page.locator("a").evaluateAll(
-      (elements) =>
-        elements.map(
-          (element) => ({
-            href:
-              (element as HTMLAnchorElement).href || "",
+    // Hämtar vanliga länkar.
+    const links =
+      await page.locator("a").evaluateAll(
+        (elements) =>
+          elements.map(
+            (element) => ({
+              href:
+                (element as HTMLAnchorElement).href || "",
 
-            text:
-              element.textContent || "",
+              text:
+                element.textContent || "",
 
-            className:
-              element.getAttribute("class") || "",
+              className:
+                element.getAttribute("class") || "",
 
-            ariaLabel:
-              element.getAttribute("aria-label") || "",
+              ariaLabel:
+                element.getAttribute("aria-label") || "",
 
-            title:
-              element.getAttribute("title") || "",
-          })
-        )
-    );
+              title:
+                element.getAttribute("title") || "",
+            })
+          )
+      );
 
-    // Kontrollerar vanliga länkar
+    // Kontrollerar vanliga länkar.
     for (const link of links) {
 
       const searchableText = [
@@ -202,81 +245,80 @@ export async function checkSocialMedia(
       );
     }
 
-    // Kontrollerar hela HTML-koden
+    // Kontrollerar hela HTML-koden.
     const html =
       await page.content();
 
     findSocialMedia(html);
 
-    // Väntar på dynamiskt innehåll
+    // Väntar på dynamiskt innehåll,
+    // exempelvis Trustindex-widgeten.
     await page.waitForTimeout(1500);
   }
 
-  // Hämtar webbplatsens titel efter att sidan har laddats
-  const websiteTitle =
-    await page.title();
-
-  const companyName =
-    websiteTitle
-      .split("|")[0]
-      .trim()
-      .toLowerCase();
-
-  // Kontrollerar om de hittade kontona verkar
-  // höra ihop med webbplatsen
+  // Kontrollerar alla hittade sociala medier.
   for (const [
     platform,
-    socialUrl
+    socialUrl,
   ] of found) {
 
     try {
 
+      // Kontrollerar att URL:en verkligen är en komplett URL.
       const socialUrlObject =
         new URL(socialUrl);
 
-      let username =
-  socialUrlObject.pathname
-    .replace(/^\/+/, "")
-    .split("/")
-    .filter(Boolean)
-    .pop()
-    ?.toLowerCase() ?? "";
+      // Hämtar användarnamnet från URL:en.
+      const username =
+        socialUrlObject.pathname
+          .replace(/^\/+/, "")
+          .split("/")
+          .filter(Boolean)
+          .pop()
+          ?.toLowerCase() ?? "";
 
-     const normalizedCompanyName =
-  companyName
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]/g, "");
+      // Normaliserar företagsnamnet.
+      const normalizedCompanyName =
+        companyName
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9]/g, "");
 
+      // Normaliserar användarnamnet.
       const normalizedUsername =
         username
           .replace(/[^a-z0-9]/g, "");
 
+      // Normaliserar domännamnet.
       const normalizedDomain =
         domainName
           .replace(/[^a-z0-9]/g, "");
 
-     const matchesCompany =
-  normalizedCompanyName.length > 0 &&
-  (
-    normalizedUsername.includes(
-      normalizedCompanyName
-    ) ||
-    normalizedCompanyName.includes(
-      normalizedUsername
-    )
-  );
+      // Kontrollerar om användarnamnet
+      // matchar företagsnamnet.
+      const matchesCompany =
+        normalizedCompanyName.length > 0 &&
+        (
+          normalizedUsername.includes(
+            normalizedCompanyName
+          ) ||
+          normalizedCompanyName.includes(
+            normalizedUsername
+          )
+        );
 
-const matchesDomain =
-  normalizedDomain.length > 0 &&
-  (
-    normalizedUsername.includes(
-      normalizedDomain
-    ) ||
-    normalizedDomain.includes(
-      normalizedUsername
-    )
-  );
+      // Kontrollerar om användarnamnet
+      // matchar domännamnet.
+      const matchesDomain =
+        normalizedDomain.length > 0 &&
+        (
+          normalizedUsername.includes(
+            normalizedDomain
+          ) ||
+          normalizedDomain.includes(
+            normalizedUsername
+          )
+        );
 
       const matches =
         matchesCompany ||
@@ -325,6 +367,7 @@ const matchesDomain =
     }
   }
 
+  // Visar om inga sociala medier hittades.
   if (found.size === 0) {
 
     console.log(
@@ -340,6 +383,7 @@ const matchesDomain =
     `Sociala medier som inte matchar: ${failed.length}`
   );
 
+  // Returnerar resultaten.
   return {
     found: [...found.entries()].map(
       ([platform, url]) => ({
