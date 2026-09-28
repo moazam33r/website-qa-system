@@ -9,6 +9,9 @@ import fs from "fs";
 // path används för att skapa säkra filsökvägar.
 import path from "path";
 
+// os används för att hitta operativsystemets temporära mapp.
+import os from "os";
+
 // Importerar typen för QA-resultat.
 import { QACheckResult } from "./qa-report";
 
@@ -113,14 +116,16 @@ export async function createPDFReport(
     data: PDFReportData
 ): Promise<string> {
 
-    // Skapar reports-mappen om den inte finns.
+    // Använder operativsystemets temporära mapp.
+    // PDF-filerna sparas därför inte i projektets reports-mapp.
     const reportsDirectory =
         path.join(
-            process.cwd(),
-            "reports"
+            os.tmpdir(),
+            "website-qa-system"
         );
 
 
+    // Skapar den temporära mappen om den inte finns.
     if (!fs.existsSync(reportsDirectory)) {
 
         fs.mkdirSync(
@@ -356,7 +361,7 @@ export async function createPDFReport(
     );
 
 
-    // Returnerar sökvägen.
+    // Returnerar sökvägen till PDF-filen.
     return filePath;
 }
 
@@ -369,14 +374,16 @@ export async function createCSVPDFReport(
     reports: CSVPDFReportItem[]
 ): Promise<string> {
 
-    // Skapar reports-mappen om den saknas.
+    // Använder operativsystemets temporära mapp.
+    // CSV-PDF-filerna sparas därför inte i projektets reports-mapp.
     const reportsDirectory =
         path.join(
-            process.cwd(),
-            "reports"
+            os.tmpdir(),
+            "website-qa-system"
         );
 
 
+    // Skapar den temporära mappen om den inte finns.
     if (!fs.existsSync(reportsDirectory)) {
 
         fs.mkdirSync(
