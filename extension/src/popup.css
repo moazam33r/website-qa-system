@@ -7,7 +7,7 @@ body {
 }
 
 
-/* Huvudcontainer för popupens innehåll */
+/* Huvudcontainer */
 .container {
   display: flex;
   flex-direction: column;
@@ -15,15 +15,29 @@ body {
 }
 
 
-/* Titel */
+/* Huvudrubrik */
 h1 {
   margin: 0;
 }
 
 
-/* Beskrivning under titeln */
+/* Sekundär rubrik */
+h2 {
+  margin-top: 15px;
+  margin-bottom: 0;
+}
+
+
+/* Beskrivning */
 .description {
   margin-top: 0;
+}
+
+
+/* CSV-beskrivning */
+.csv-description {
+  margin-top: 0;
+  font-size: 13px;
 }
 
 
@@ -36,7 +50,13 @@ input {
 }
 
 
-/* Startknapp */
+/* Filväljaren */
+input[type="file"] {
+  padding: 5px;
+}
+
+
+/* Knappar */
 button {
   padding: 10px;
   font-size: 14px;
@@ -44,20 +64,19 @@ button {
 }
 
 
-/* Knappen ska inte kunna klickas
-   medan QA-skanningen körs */
+/* Inaktiverad knapp */
 button:disabled {
   cursor: not-allowed;
 }
 
 
-/* Område för progressbaren */
+/* Progresscontainer */
 .progress-container {
   margin-top: 10px;
 }
 
 
-/* Rad som innehåller status och procent */
+/* Rad med status och procent */
 .progress-info {
   display: flex;
   justify-content: space-between;
@@ -82,8 +101,37 @@ button:disabled {
   height: 100%;
   border-radius: 4px;
 
-  /* Gör progressen mjuk när den ökar */
+  /* Gör progressen mjuk */
   transition: width 0.3s ease;
+}
+
+
+/* Statusområde */
+.status {
+  margin-top: 10px;
+}
+
+
+/* Resultatområde */
+.results {
+  margin-top: 10px;
+}
+
+
+/* Resultat för varje CSV-webbplats */
+.csv-result {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+
+/* PDF-länk från CSV-resultat */
+.csv-pdf-link {
+  display: inline-block;
+  margin-top: 5px;
+  text-decoration: none;
 }
 
 
@@ -99,19 +147,7 @@ button:disabled {
 }
 
 
-/* Område för statusmeddelanden */
-.status {
-  margin-top: 10px;
-}
-
-
-/* Område där QA-resultatet visas */
-.results {
-  margin-top: 10px;
-}
-
-
-/* Döljer element som har hidden-attributet */
+/* Döljer element med hidden-attribut */
 [hidden] {
   display: none;
 }

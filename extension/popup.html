@@ -6,7 +6,7 @@
   <!-- Gör popupen responsiv -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Titel som används av popupen -->
+  <!-- Titel för extensionen -->
   <title>Website QA System</title>
 
   <!-- Kopplar popupens CSS -->
@@ -26,6 +26,11 @@
       Automatiserad QA-granskning av webbplatser.
     </p>
 
+
+    <!-- ========================= -->
+    <!-- ENKEL WEBBPLATS-SKANNING -->
+    <!-- ========================= -->
+
     <!-- Etikett för URL-fältet -->
     <label for="url">
       Website URL
@@ -38,15 +43,48 @@
       placeholder="https://example.se"
     >
 
-    <!-- Knapp som startar QA-skanningen -->
+    <!-- Knapp för vanlig QA-skanning -->
     <button id="scanButton">
       Start QA
     </button>
 
-    <!-- Område för loading/progress -->
-    <div id="progressContainer" class="progress-container" hidden>
 
-      <!-- Text som visar aktuell status -->
+    <!-- ========================= -->
+    <!-- CSV-SKANNING -->
+    <!-- ========================= -->
+
+    <!-- Rubrik för CSV-funktionen -->
+    <h2>CSV QA Scan</h2>
+
+    <!-- Beskrivning av CSV-funktionen -->
+    <p class="csv-description">
+      Välj en CSV-fil med webbplatser som ska testas.
+    </p>
+
+    <!-- Filväljare för CSV -->
+    <input
+      id="csvFile"
+      type="file"
+      accept=".csv"
+    >
+
+    <!-- Knapp för att starta CSV-skanning -->
+    <button
+      id="csvScanButton"
+      type="button"
+    >
+      Start CSV QA
+    </button>
+
+
+    <!-- Område för progressbaren -->
+    <div
+      id="progressContainer"
+      class="progress-container"
+      hidden
+    >
+
+      <!-- Rad som visar status och procent -->
       <div class="progress-info">
 
         <!-- Statusmeddelande -->
@@ -54,14 +92,14 @@
           QA-skanning pågår...
         </span>
 
-        <!-- Aktuell procent -->
+        <!-- Procent -->
         <span id="progressPercent">
           0%
         </span>
 
       </div>
 
-      <!-- Bakgrund för progressbaren -->
+      <!-- Bakgrund till progressbaren -->
       <div class="progress-bar">
 
         <!-- Själva progressen -->
@@ -74,24 +112,46 @@
 
     </div>
 
-    <!-- Område där statusmeddelanden visas -->
-    <div id="status" class="status"></div>
+
+    <!-- Område för statusmeddelanden -->
+    <div
+      id="status"
+      class="status"
+    ></div>
+
 
     <!-- Område där QA-resultatet visas -->
-    <div id="results" class="results"></div>
+    <div
+      id="results"
+      class="results"
+    ></div>
 
-    <!-- Knapp för att öppna den genererade PDF-rapporten -->
-    <a
-      id="pdfButton"
-      class="pdf-button"
-      href="#"
-      target="_blank"
-      hidden
-    >
-      Ladda ner PDF
-    </a>
 
-  </main>
+    <!-- ========================= -->
+<!-- PDF-FUNKTIONER -->
+<!-- ========================= -->
+
+<!-- Knapp för att öppna PDF-rapporten -->
+<button
+  id="pdfButton"
+  class="pdf-button"
+  type="button"
+  hidden
+>
+  Öppna PDF-rapport
+</button>
+
+<!-- Knapp för att ladda ner PDF-rapporten -->
+<button
+  id="downloadPdfButton"
+  class="pdf-button"
+  type="button"
+  hidden
+>
+  Ladda ner PDF-rapport
+</button>
+
+
 
   <!-- Kopplar popupens JavaScript -->
   <script src="src/popup.js"></script>
