@@ -17,8 +17,48 @@ const app = express();
 const PORT = 3000;
 
 
+// --------------------------------------------------
+// JSON
+// --------------------------------------------------
+
 // Gör så att API:t kan ta emot JSON-data.
 app.use(express.json());
+
+
+// --------------------------------------------------
+// CORS
+// --------------------------------------------------
+
+// Tillåter Chrome Extension att kommunicera med API:t.
+app.use((req, res, next) => {
+
+  // Tillåter anrop från andra origins.
+  res.header(
+    "Access-Control-Allow-Origin",
+    "*"
+  );
+
+  // Tillåter de HTTP-metoder som API:t använder.
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET, POST, OPTIONS"
+  );
+
+  // Tillåter Content-Type i API-anrop.
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type"
+  );
+
+  // Chrome kan skicka ett OPTIONS-anrop
+  // innan själva POST-anropet.
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
+  // Fortsätter till nästa middleware eller endpoint.
+  next();
+});
 
 
 // --------------------------------------------------
@@ -26,6 +66,7 @@ app.use(express.json());
 // --------------------------------------------------
 
 // Test-endpoint.
+//
 // Används för att kontrollera att API-servern fungerar.
 app.get("/api/health", (_req, res) => {
 
@@ -34,7 +75,6 @@ app.get("/api/health", (_req, res) => {
     status: "ok",
     message: "Website QA System API fungerar.",
   });
-
 });
 
 
@@ -44,7 +84,6 @@ app.get("/api/health", (_req, res) => {
 
 // Endpoint för att skanna en webbplats.
 //
-// Exempel:
 // POST /api/scan
 //
 // Body:
@@ -52,6 +91,7 @@ app.get("/api/health", (_req, res) => {
 // {
 //   "url": "https://digitalkontakt.se"
 // }
+
 app.post("/api/scan", async (req, res) => {
 
   // Hämtar URL från requestens JSON-body.
@@ -64,7 +104,6 @@ app.post("/api/scan", async (req, res) => {
     return res.status(400).json({
       error: "En giltig URL måste anges.",
     });
-
   }
 
 
@@ -72,17 +111,18 @@ app.post("/api/scan", async (req, res) => {
   const websiteUrl = url.trim();
 
 
-  // Kontrollerar att URL:en börjar med http eller https.
+  // Kontrollerar att URL:en börjar med
+  // http:// eller https://.
   if (!/^https?:\/\//i.test(websiteUrl)) {
 
     return res.status(400).json({
       error: "URL måste börja med http:// eller https://",
     });
-
   }
 
 
   // Variabler för browser och page.
+  //
   // De stängs senare även om något går fel.
   let browser;
   let page;
@@ -90,10 +130,10 @@ app.post("/api/scan", async (req, res) => {
 
   try {
 
+    // Skriver information till serverns terminal.
     console.log("\n========================================");
     console.log("          API QA SCANNING");
     console.log("========================================");
-
     console.log(`\nTestar: ${websiteUrl}`);
 
 
@@ -152,9 +192,7 @@ app.post("/api/scan", async (req, res) => {
     if (browser) {
       await browser.close();
     }
-
   }
-
 });
 
 
@@ -163,8 +201,6 @@ app.post("/api/scan", async (req, res) => {
 // --------------------------------------------------
 
 // Endpoint för att skanna flera webbplatser.
-//
-// Exempel:
 //
 // POST /api/scan-csv
 //
@@ -177,6 +213,7 @@ app.post("/api/scan", async (req, res) => {
 //     "https://abctakplat.se"
 //   ]
 // }
+
 app.post("/api/scan-csv", async (req, res) => {
 
   // Hämtar URL-listan från requesten.
@@ -189,7 +226,6 @@ app.post("/api/scan-csv", async (req, res) => {
     return res.status(400).json({
       error: "urls måste vara en array.",
     });
-
   }
 
 
@@ -199,12 +235,11 @@ app.post("/api/scan-csv", async (req, res) => {
     return res.status(400).json({
       error: "Minst en URL måste anges.",
     });
-
   }
 
 
   // Kontrollerar att alla URL:er är strängar
-  // och börjar med http eller https.
+  // och börjar med http:// eller https://.
   const invalidUrls = urls.filter(
     (url) =>
       typeof url !== "string" ||
@@ -219,11 +254,11 @@ app.post("/api/scan-csv", async (req, res) => {
       error: "En eller flera URL:er är ogiltiga.",
       invalidUrls,
     });
-
   }
 
 
-  // Array där vi sparar resultatet för varje webbplats.
+  // Array där vi sparar resultatet
+  // för varje webbplats.
   const results = [];
 
 
@@ -243,8 +278,11 @@ app.post("/api/scan-csv", async (req, res) => {
       const websiteUrl = url.trim();
 
 
+      // Skriver information till serverns terminal.
       console.log("\n========================================");
-      console.log(`TESTAR VIA CSV API: ${websiteUrl}`);
+      console.log(
+        `TESTAR VIA CSV API: ${websiteUrl}`
+      );
       console.log("========================================");
 
 
@@ -287,9 +325,7 @@ app.post("/api/scan-csv", async (req, res) => {
 
         // Stänger sidan innan nästa webbplats testas.
         await page.close();
-
       }
-
     }
 
 
@@ -325,9 +361,7 @@ app.post("/api/scan-csv", async (req, res) => {
 
     // Stänger Chromium när alla webbplatser är klara.
     await browser.close();
-
   }
-
 });
 
 
@@ -357,5 +391,4 @@ app.listen(PORT, () => {
   console.log(
     `CSV endpoint: POST http://localhost:${PORT}/api/scan-csv`
   );
-
 });

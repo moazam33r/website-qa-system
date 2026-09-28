@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+
+  <!-- Gör popupen responsiv -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Titel som används av popupen -->
+  <title>Website QA System</title>
+
+  <!-- Kopplar popupens CSS -->
+  <link rel="stylesheet" href="src/popup.css">
+</head>
+
+<body>
+
+  <!-- Huvudcontainer för extensionen -->
+  <main class="container">
+
+    <!-- Titel -->
+    <h1>Website QA System</h1>
+
+    <!-- Kort beskrivning -->
+    <p class="description">
+      Automatiserad QA-granskning av webbplatser.
+    </p>
+
+    <!-- Etikett för URL-fältet -->
+    <label for="url">
+      Website URL
+    </label>
+
+    <!-- Fält där användaren skriver in webbplatsen -->
+    <input
+      id="url"
+      type="url"
+      placeholder="https://example.se"
+    >
+
+    <!-- Knapp som startar QA-skanningen -->
+    <button id="scanButton">
+      Start QA
+    </button>
+
+    <!-- Område där statusmeddelanden visas -->
+    <div id="status" class="status"></div>
+
+    <!-- Område där QA-resultatet visas -->
+    <div id="results" class="results"></div>
+
+  </main>
+
+  <!-- Kopplar popupens JavaScript -->
+  <script src="src/popup.js"></script>
+
+</body>
+</html>

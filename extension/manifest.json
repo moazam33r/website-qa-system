@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+
+  "name": "Website QA System",
+
+  "version": "1.0.0",
+
+  "description": "Automatiserat QA-system för webbplatser.",
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Website QA System"
+  },
+
+  "permissions": [
+    "storage"
+  ],
+
+  "host_permissions": [
+    "http://localhost:3000/*"
+  ]
+}

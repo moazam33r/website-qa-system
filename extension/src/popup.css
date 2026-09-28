@@ -1,0 +1,69 @@
+/* Grundinställningar för popupen */
+body {
+  width: 360px;
+  margin: 0;
+  padding: 20px;
+
+  font-family: Arial, sans-serif;
+}
+
+
+/* Huvudcontainer för popupens innehåll */
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+
+/* Titel */
+h1 {
+  margin: 0;
+}
+
+
+/* Beskrivning under titeln */
+.description {
+  margin-top: 0;
+}
+
+
+/* URL-fält */
+input {
+  padding: 10px;
+
+  font-size: 14px;
+
+  box-sizing: border-box;
+
+  width: 100%;
+}
+
+
+/* Startknapp */
+button {
+  padding: 10px;
+
+  font-size: 14px;
+
+  cursor: pointer;
+}
+
+
+/* Knappen ska inte kunna klickas
+   medan QA-skanningen körs */
+button:disabled {
+  cursor: not-allowed;
+}
+
+
+/* Område för statusmeddelanden */
+.status {
+  margin-top: 10px;
+}
+
+
+/* Område för QA-resultatet */
+.results {
+  margin-top: 10px;
+}
