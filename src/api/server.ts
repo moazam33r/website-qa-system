@@ -21,6 +21,10 @@ const PORT = 3000;
 app.use(express.json());
 
 
+// --------------------------------------------------
+// HEALTH CHECK
+// --------------------------------------------------
+
 // Test-endpoint.
 // Används för att kontrollera att API-servern fungerar.
 app.get("/api/health", (_req, res) => {
@@ -30,8 +34,13 @@ app.get("/api/health", (_req, res) => {
     status: "ok",
     message: "Website QA System API fungerar.",
   });
+
 });
 
+
+// --------------------------------------------------
+// EN WEBBPLATS
+// --------------------------------------------------
 
 // Endpoint för att skanna en webbplats.
 //
@@ -39,6 +48,7 @@ app.get("/api/health", (_req, res) => {
 // POST /api/scan
 //
 // Body:
+//
 // {
 //   "url": "https://digitalkontakt.se"
 // }
@@ -54,6 +64,7 @@ app.post("/api/scan", async (req, res) => {
     return res.status(400).json({
       error: "En giltig URL måste anges.",
     });
+
   }
 
 
@@ -67,6 +78,7 @@ app.post("/api/scan", async (req, res) => {
     return res.status(400).json({
       error: "URL måste börja med http:// eller https://",
     });
+
   }
 
 
@@ -120,6 +132,7 @@ app.post("/api/scan", async (req, res) => {
     // Returnerar ett tydligt fel till klienten.
     return res.status(500).json({
       error: "QA-skanningen kunde inte genomföras.",
+
       message:
         error instanceof Error
           ? error.message
@@ -141,8 +154,186 @@ app.post("/api/scan", async (req, res) => {
     }
 
   }
+
 });
 
+
+// --------------------------------------------------
+// CSV / FLERA WEBBPLATSER
+// --------------------------------------------------
+
+// Endpoint för att skanna flera webbplatser.
+//
+// Exempel:
+//
+// POST /api/scan-csv
+//
+// Body:
+//
+// {
+//   "urls": [
+//     "https://digitalkontakt.se",
+//     "https://kallsvvs.se",
+//     "https://abctakplat.se"
+//   ]
+// }
+app.post("/api/scan-csv", async (req, res) => {
+
+  // Hämtar URL-listan från requesten.
+  const { urls } = req.body;
+
+
+  // Kontrollerar att urls finns och är en array.
+  if (!Array.isArray(urls)) {
+
+    return res.status(400).json({
+      error: "urls måste vara en array.",
+    });
+
+  }
+
+
+  // Kontrollerar att minst en URL skickades.
+  if (urls.length === 0) {
+
+    return res.status(400).json({
+      error: "Minst en URL måste anges.",
+    });
+
+  }
+
+
+  // Kontrollerar att alla URL:er är strängar
+  // och börjar med http eller https.
+  const invalidUrls = urls.filter(
+    (url) =>
+      typeof url !== "string" ||
+      !/^https?:\/\//i.test(url.trim())
+  );
+
+
+  // Om någon URL är ogiltig avbryter vi requesten.
+  if (invalidUrls.length > 0) {
+
+    return res.status(400).json({
+      error: "En eller flera URL:er är ogiltiga.",
+      invalidUrls,
+    });
+
+  }
+
+
+  // Array där vi sparar resultatet för varje webbplats.
+  const results = [];
+
+
+  // Startar en gemensam Chromium-browser.
+  //
+  // Vi använder samma browser för alla webbplatser,
+  // men skapar en ny page för varje webbplats.
+  const browser = await chromium.launch();
+
+
+  try {
+
+    // Går igenom webbplatserna en efter en.
+    for (const url of urls) {
+
+      // Tar bort eventuella mellanslag.
+      const websiteUrl = url.trim();
+
+
+      console.log("\n========================================");
+      console.log(`TESTAR VIA CSV API: ${websiteUrl}`);
+      console.log("========================================");
+
+
+      // Skapar en ny Playwright-sida.
+      const page = await browser.newPage();
+
+
+      try {
+
+        // Kör samma QA-motor som används av /api/scan.
+        const result = await scanWebsite(
+          page,
+          websiteUrl
+        );
+
+
+        // Sparar resultatet för webbplatsen.
+        results.push({
+          success: true,
+          ...result,
+        });
+
+
+      } catch (error) {
+
+        // Om en webbplats misslyckas fortsätter vi
+        // med nästa webbplats.
+        results.push({
+          success: false,
+          url: websiteUrl,
+
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        });
+
+
+      } finally {
+
+        // Stänger sidan innan nästa webbplats testas.
+        await page.close();
+
+      }
+
+    }
+
+
+    // Returnerar alla resultat när alla webbplatser
+    // har behandlats.
+    return res.status(200).json({
+      total: urls.length,
+      results,
+    });
+
+
+  } catch (error) {
+
+    // Hanterar fel som påverkar hela CSV-skanningen.
+    console.error(
+      "\nCSV API-skanningen misslyckades."
+    );
+
+    console.error(error);
+
+
+    return res.status(500).json({
+      error: "CSV-skanningen kunde inte genomföras.",
+
+      message:
+        error instanceof Error
+          ? error.message
+          : String(error),
+    });
+
+
+  } finally {
+
+    // Stänger Chromium när alla webbplatser är klara.
+    await browser.close();
+
+  }
+
+});
+
+
+// --------------------------------------------------
+// STARTA API-SERVERN
+// --------------------------------------------------
 
 // Startar API-servern.
 app.listen(PORT, () => {
@@ -161,6 +352,10 @@ app.listen(PORT, () => {
 
   console.log(
     `Scan endpoint: POST http://localhost:${PORT}/api/scan`
+  );
+
+  console.log(
+    `CSV endpoint: POST http://localhost:${PORT}/api/scan-csv`
   );
 
 });
