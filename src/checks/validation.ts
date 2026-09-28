@@ -1,9 +1,16 @@
 import { Page } from "@playwright/test";
 
+// Funktion som används för att rapportera progress tillbaka till scanWebsite.
+type ProgressCallback = (
+  percentage: number,
+  message: string
+) => void;
+
 // Kontrollerar validering av formulär
 export async function checkValidation(
   page: Page,
-  pages: string[]
+  pages: string[],
+  onProgress?: ProgressCallback
 ) {
 
   // Räknar e-postfält som klarar valideringen
@@ -57,6 +64,12 @@ export async function checkValidation(
       }
     }
   }
+
+  // Rapporterar att e-postvalideringen börjar
+  onProgress?.(
+    40,
+    "Testar e-postvalidering..."
+  );
 
   // Kontrollerar e-postvalidering
   console.log("\nEmail validation check:");
@@ -113,6 +126,18 @@ export async function checkValidation(
     }
   }
 
+  // Rapporterar att e-postvalideringen är klar
+  onProgress?.(
+    45,
+    "E-postvalidering klar"
+  );
+
+  // Rapporterar att telefonvalideringen börjar
+  onProgress?.(
+    50,
+    "Testar telefonvalidering..."
+  );
+
   // Kontrollerar telefonvalidering
   console.log("\nPhone validation check:");
 
@@ -167,6 +192,12 @@ export async function checkValidation(
       }
     }
   }
+
+  // Rapporterar att telefonvalideringen är klar
+  onProgress?.(
+    55,
+    "Validering klar"
+  );
 
   // Visar sammanfattning
   console.log("\nValidation summary:");

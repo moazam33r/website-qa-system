@@ -25,9 +25,15 @@ import {
 } from "./report/qa-report";
 
 // Startar en komplett QA-skanning av webbplatsen
+// Callback som används för att skicka aktuell progress
+// tillbaka till servern och sedan vidare till popupen.
 export async function scanWebsite(
   page: Page,
-  url: string
+  url: string,
+  onProgress?: (
+    percentage: number,
+    message: string
+  ) => void
 ) {
 
   console.log("\n=================================");
@@ -555,10 +561,19 @@ if (seoResult.failed.length > 0) {
   // 9. Kontrollerar formulärvalidering
   console.log("\n--- VALIDERING ---");
 
-  const validationResult = await checkValidation(
-    page,
-    pages
-  );
+  // Kontrollerar formulärvalidering och skickar progress vidare.
+const validationResult = await checkValidation(
+  page,
+  pages,
+  (percentage, message) => {
+
+    // Skickar progress till servern.
+    onProgress?.(
+      percentage,
+      message
+    );
+  }
+);
 
   if (validationResult.emailFailed > 0) {
 
