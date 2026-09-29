@@ -2,9 +2,13 @@
 // Den körs utanför Playwright-processen.
 //
 // Syftet är att isolera Ollama från Playwright
-// och göra AI-anropet mer stabilt.
+// och göra kommunikationen med den lokala AI-modellen
+// mer stabil.
 
+// HTTP används när Ollama körs med http://.
 import http from "http";
+
+// HTTPS används om Ollama konfigureras med https://.
 import https from "https";
 
 // Hämtar Ollama-inställningarna från .env.
@@ -14,77 +18,70 @@ import {
   OLLAMA_TIMEOUT_MS,
 } from "./ollama-config";
 
-// Väljer rätt HTTP-klient beroende på om Ollama använder
-// http:// eller https://.
+// Skapar URL till Ollamas chat-endpoint.
 const ollamaUrl = getOllamaUrl("/api/chat");
 
+// Väljer rätt HTTP-klient beroende på
+// om Ollama använder http:// eller https://.
 const httpClient =
   ollamaUrl.protocol === "https:"
     ? https
     : http;
 
 // Läser prompten från kommandoraden.
-const prompt =
-  process.argv.slice(2).join(" ");
+const prompt = process.argv.slice(2).join(" ");
 
 // Kontrollerar att en prompt faktiskt skickades.
 if (!prompt) {
-  console.error(
-    "Ingen prompt skickades till Ollama."
-  );
-
+  console.error("Ingen prompt skickades till Ollama.");
   process.exit(1);
 }
 
 // Kontrollerar först att Ollama-servern svarar.
-// Detta gör att vi kan ge ett tydligare felmeddelande
-// om Ollama inte är igång på datorn.
 function checkOllamaConnection(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const tagsUrl =
-      getOllamaUrl("/api/tags");
+    // Skapar URL till Ollamas modell-endpoint.
+    const tagsUrl = getOllamaUrl("/api/tags");
 
+    // Väljer rätt klient för HTTP eller HTTPS.
     const client =
       tagsUrl.protocol === "https:"
         ? https
         : http;
 
-    const request =
-      client.get(
-        tagsUrl,
-        (response) => {
+    // Skickar en GET-förfrågan till Ollama.
+    const request = client.get(
+      tagsUrl,
+      (response) => {
+        // Vi behöver inte läsa hela svaret.
+        response.resume();
 
-          // Vi behöver inte läsa hela svaret.
-          response.resume();
-
-          // Status 200 betyder att Ollama svarar.
-          if (response.statusCode === 200) {
-            resolve();
-            return;
-          }
-
-          reject(
-            new Error(
-              `Ollama svarade med HTTP ${response.statusCode}.`
-            )
-          );
+        // HTTP 200 betyder att Ollama svarar.
+        if (response.statusCode === 200) {
+          resolve();
+          return;
         }
-      );
 
-    // Hanterar anslutningsfel.
-    request.on(
-      "error",
-      () => {
+        // Alla andra statuskoder behandlas som fel.
         reject(
           new Error(
-            `Kunde inte ansluta till Ollama på ${tagsUrl.origin}. ` +
-            "Kontrollera att Ollama är installerat och körs."
+            `Ollama svarade med HTTP ${response.statusCode}.`
           )
         );
       }
     );
 
-    // Stoppar kontrollen om Ollama inte svarar.
+    // Hanterar om Ollama inte går att nå.
+    request.on("error", () => {
+      reject(
+        new Error(
+          `Kunde inte ansluta till Ollama på ${tagsUrl.origin}. ` +
+          "Kontrollera att Ollama är installerat och körs."
+        )
+      );
+    });
+
+    // Stoppar kontrollen om Ollama inte svarar i tid.
     request.setTimeout(
       OLLAMA_TIMEOUT_MS,
       () => {
@@ -100,121 +97,106 @@ function checkOllamaConnection(): Promise<void> {
   });
 }
 
-// Kontrollerar att den modell som är konfigurerad
+// Kontrollerar att den konfigurerade modellen
 // faktiskt finns installerad i Ollama.
 function checkOllamaModel(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const tagsUrl =
-      getOllamaUrl("/api/tags");
+    // Skapar URL till Ollamas modellista.
+    const tagsUrl = getOllamaUrl("/api/tags");
 
+    // Väljer rätt klient för HTTP eller HTTPS.
     const client =
       tagsUrl.protocol === "https:"
         ? https
         : http;
 
-    const request =
-      client.get(
-        tagsUrl,
-        (response) => {
+    // Hämtar installerade modeller.
+    const request = client.get(
+      tagsUrl,
+      (response) => {
+        // Samlar hela JSON-svaret.
+        let responseBody = "";
 
-          let responseBody = "";
+        // Läser svaret från Ollama.
+        response.on("data", (chunk) => {
+          responseBody += chunk.toString();
+        });
 
-          // Samlar Ollamas svar.
-          response.on(
-            "data",
-            (chunk) => {
-              responseBody +=
-                chunk.toString();
-            }
-          );
+        // Körs när hela svaret har kommit.
+        response.on("end", () => {
+          // Ollama måste svara med HTTP 200.
+          if (response.statusCode !== 200) {
+            reject(
+              new Error(
+                `Kunde inte läsa Ollamas modeller. ` +
+                `HTTP ${response.statusCode}.`
+              )
+            );
+            return;
+          }
 
-          // När hela svaret har kommit.
-          response.on(
-            "end",
-            () => {
+          try {
+            // Konverterar Ollamas JSON-svar till ett objekt.
+            const data = JSON.parse(responseBody);
 
-              // Ollama måste svara med HTTP 200.
-              if (response.statusCode !== 200) {
-                reject(
-                  new Error(
-                    `Kunde inte läsa Ollamas modeller. ` +
-                    `HTTP ${response.statusCode}.`
+            // Hämtar namnen på installerade modeller.
+            const installedModels =
+              Array.isArray(data.models)
+                ? data.models.map(
+                    (model: { name?: string }) =>
+                      model.name
                   )
-                );
+                : [];
 
-                return;
-              }
-
-              try {
-
-                // Läser listan över installerade modeller.
-                const data =
-                  JSON.parse(responseBody);
-
-                const installedModels =
-                  Array.isArray(data.models)
-                    ? data.models.map(
-                        (model: { name?: string }) =>
-                          model.name
-                      )
-                    : [];
-
-                // Om användaren har angett en modell
-                // med exakt version, exempelvis qwen3:4b,
-                // kräver vi exakt den modellen.
-                //
-                // Om endast modellnamnet anges, exempelvis qwen3,
-                // accepterar vi en installerad variant av modellen.
-                const modelIsInstalled =
-                  OLLAMA_MODEL.includes(":")
-                    ? installedModels.includes(
-                        OLLAMA_MODEL
-                      )
-                    : installedModels.some(
-                        (model: string | undefined) =>
-                          model?.split(":")[0] ===
-                          OLLAMA_MODEL
-                      );
-
-                // Stoppar om modellen saknas.
-                if (!modelIsInstalled) {
-                  reject(
-                    new Error(
-                      `Modellen "${OLLAMA_MODEL}" är inte installerad. ` +
-                      `Kör: ollama pull ${OLLAMA_MODEL}`
-                    )
+            // Om modellen innehåller version,
+            // exempelvis qwen3:4b, krävs exakt den modellen.
+            //
+            // Om endast modellnamnet anges,
+            // exempelvis qwen3, accepteras en installerad variant.
+            const modelIsInstalled =
+              OLLAMA_MODEL.includes(":")
+                ? installedModels.includes(
+                    OLLAMA_MODEL
+                  )
+                : installedModels.some(
+                    (model: string | undefined) =>
+                      model?.split(":")[0] ===
+                      OLLAMA_MODEL
                   );
 
-                  return;
-                }
-
-                // Modellen finns.
-                resolve();
-
-              } catch (error) {
-
-                reject(
-                  new Error(
-                    `Kunde inte läsa Ollamas modellsvar: ${error}`
-                  )
-                );
-              }
+            // Stoppar om modellen saknas.
+            if (!modelIsInstalled) {
+              reject(
+                new Error(
+                  `Modellen "${OLLAMA_MODEL}" är inte installerad. ` +
+                  `Kör: ollama pull ${OLLAMA_MODEL}`
+                )
+              );
+              return;
             }
-          );
-        }
-      );
 
-    // Hanterar anslutningsfel.
-    request.on(
-      "error",
-      (error) => {
-        reject(
-          new Error(
-            `Kunde inte kontrollera Ollamas modell: ${error.message}`
-          )
-        );
+            // Modellen finns och kan användas.
+            resolve();
+          } catch (error) {
+            // Hanterar om Ollamas JSON-svar inte går att läsa.
+            reject(
+              new Error(
+                `Kunde inte läsa Ollamas modellsvar: ${error}`
+              )
+            );
+          }
+        });
       }
     );
+
+    // Hanterar anslutningsfel.
+    request.on("error", (error) => {
+      reject(
+        new Error(
+          `Kunde inte kontrollera Ollamas modell: ${error.message}`
+        )
+      );
+    });
 
     // Stoppar kontrollen om Ollama inte svarar.
     request.setTimeout(
@@ -234,32 +216,28 @@ function checkOllamaModel(): Promise<void> {
 
 // Skapar JSON-datan som skickas till Ollama.
 const body = JSON.stringify({
-
   // Använder modellen från .env.
-  // Standardvärdet är qwen3:4b.
   model: OLLAMA_MODEL,
 
   // Skickar både systeminstruktion och användarprompt.
   messages: [
     {
-      // Systemrollen ger modellen grundregler
-      // innan den får själva QA-prompten.
+      // Systemrollen bestämmer hur AI:n ska analysera QA-resultaten.
       role: "system",
 
+      // Den tidigare fungerande prompten används igen.
       content:
         "Du är en svensk QA-analysassistent. " +
         "Returnera endast den färdiga QA-analysen. " +
         "Svara endast på svenska. " +
         "Skriv aldrig ditt resonemang eller din arbetsprocess. " +
-        "Skriv aldrig text som 'Okay', 'Let's', 'The user', " +
-        "'First, I need to' eller liknande. " +
         "Börja direkt med '1. Vad fungerar bra'.",
     },
-
     {
-      // Här skickas den detaljerade QA-prompten
-      // från analyzeQAResults().
+      // Här skickas den detaljerade QA-prompten.
       role: "user",
+
+      // Själva QA-resultaten skickas här.
       content: prompt,
     },
   ],
@@ -270,11 +248,12 @@ const body = JSON.stringify({
   // Stänger av Qwen3:s thinking-läge.
   think: false,
 
-  // Begränsar hur långt AI-svaret får bli.
+  // Inställningar för AI-svaret.
   options: {
+    // Begränsar hur långt AI-svaret får bli.
     num_predict: 350,
 
-    // Lägre temperatur ger ett mer förutsägbart svar.
+    // Låg temperatur ger mer stabila svar.
     temperature: 0.2,
   },
 });
@@ -282,9 +261,7 @@ const body = JSON.stringify({
 // Kör först kontrollerna av Ollama och modellen.
 // Därefter skickas själva QA-analysen.
 async function run(): Promise<void> {
-
   try {
-
     // Kontrollerar att Ollama-servern är tillgänglig.
     await checkOllamaConnection();
 
@@ -292,168 +269,129 @@ async function run(): Promise<void> {
     await checkOllamaModel();
 
     // Skickar sedan QA-prompten till Ollama.
-    const request =
-      httpClient.request(
-        {
-          // Använder host och port från .env.
-          hostname:
-            ollamaUrl.hostname,
+    const request = httpClient.request(
+      {
+        // Använder host från .env.
+        hostname: ollamaUrl.hostname,
 
-          // Använder porten från .env-adressen.
-          port:
-            ollamaUrl.port
-              ? Number(ollamaUrl.port)
-              : ollamaUrl.protocol === "https:"
-                ? 443
-                : 80,
+        // Använder port från .env.
+        port: ollamaUrl.port
+          ? Number(ollamaUrl.port)
+          : ollamaUrl.protocol === "https:"
+            ? 443
+            : 80,
 
-          // Skickar till Ollamas chat-endpoint.
-          path:
-            `${ollamaUrl.pathname}${ollamaUrl.search}`,
+        // Skickar till Ollamas chat-endpoint.
+        path: `${ollamaUrl.pathname}${ollamaUrl.search}`,
 
-          method: "POST",
+        // HTTP-metoden för Ollama chat.
+        method: "POST",
 
-          headers: {
-            "Content-Type":
-              "application/json",
+        // Anger att vi skickar JSON.
+        headers: {
+          "Content-Type": "application/json",
 
-            "Content-Length":
-              Buffer.byteLength(body),
-          },
-
-          // Använder timeout från .env.
-          timeout:
-            OLLAMA_TIMEOUT_MS,
+          // Anger storleken på JSON-datan.
+          "Content-Length": Buffer.byteLength(body),
         },
 
-        (response) => {
+        // Använder timeout från .env.
+        timeout: OLLAMA_TIMEOUT_MS,
+      },
+      (response) => {
+        // Samlar Ollamas svar.
+        let responseBody = "";
 
-          let responseBody = "";
+        // Läser svaret från Ollama.
+        response.on("data", (chunk) => {
+          responseBody += chunk.toString();
+        });
 
-          // Samlar Ollamas svar.
-          response.on(
-            "data",
-            (chunk) => {
-              responseBody +=
-                chunk.toString();
+        // Körs när hela svaret har kommit.
+        response.on("end", () => {
+          // Kontrollerar HTTP-statusen.
+          if (response.statusCode !== 200) {
+            console.error(
+              `Ollama status: ${response.statusCode}`
+            );
+            process.exit(1);
+          }
+
+          try {
+            // Läser Ollamas JSON-svar.
+            const data = JSON.parse(responseBody);
+
+            // Hämtar själva AI-svaret.
+            let answer =
+              data.message?.content || "";
+
+            // Kontrollerar att AI:n faktiskt skickade något.
+            if (!answer.trim()) {
+              console.error(
+                "Ollama skickade ett tomt svar."
+              );
+              process.exit(1);
             }
-          );
 
-          // När hela svaret har kommit.
-          response.on(
-            "end",
-            () => {
+            // Tar bort eventuella <think>-block.
+            answer = answer.replace(
+              /<think>[\s\S]*?<\/think>/gi,
+              ""
+            );
 
-              // Kontrollerar HTTP-statusen.
-              if (
-                response.statusCode !== 200
-              ) {
-                console.error(
-                  `Ollama status: ${response.statusCode}`
-                );
+            // Letar efter början på den riktiga QA-analysen.
+            const startIndex =
+              answer.indexOf(
+                "1. Vad fungerar bra"
+              );
 
-                process.exit(1);
-              }
-
-              try {
-
-                // Läser Ollamas JSON-svar.
-                const data =
-                  JSON.parse(
-                    responseBody
-                  );
-
-                // Hämtar själva AI-svaret.
-                let answer =
-                  data.message?.content ||
-                  "";
-
-                // Kontrollerar att AI:n faktiskt
-                // skickade tillbaka något.
-                if (!answer.trim()) {
-                  console.error(
-                    "Ollama skickade ett tomt svar."
-                  );
-
-                  process.exit(1);
-                }
-
-                // Tar bort eventuella <think>-block
-                // om modellen trots allt skickar sådana.
-                answer =
-                  answer.replace(
-                    /<think>[\s\S]*?<\/think>/gi,
-                    ""
-                  );
-
-                // Letar efter början på den riktiga
-                // QA-analysen.
-                const startIndex =
-                  answer.indexOf(
-                    "1. Vad fungerar bra"
-                  );
-
-                // Tar bort eventuell text som modellen
-                // skrev innan själva QA-analysen.
-                if (startIndex !== -1) {
-                  answer =
-                    answer
-                      .slice(startIndex)
-                      .trim();
-                }
-
-                // Skriver endast ut det färdiga AI-svaret.
-                console.log(answer);
-
-              } catch (error) {
-
-                console.error(
-                  `Kunde inte läsa Ollama-svaret: ${error}`
-                );
-
-                process.exit(1);
-              }
+            // Tar bort eventuell text före QA-analysen.
+            if (startIndex !== -1) {
+              answer =
+                answer
+                  .slice(startIndex)
+                  .trim();
             }
-          );
-        }
-      );
 
-    // Hanterar anslutningsfel under själva AI-anropet.
-    request.on(
-      "error",
-      (error) => {
-
-        console.error(
-          `Ollama-fel: ${error.message}`
-        );
-
-        process.exit(1);
+            // Skriver endast ut det färdiga AI-svaret.
+            console.log(answer);
+          } catch (error) {
+            // Hanterar fel när Ollamas svar ska läsas.
+            console.error(
+              `Kunde inte läsa Ollama-svaret: ${error}`
+            );
+            process.exit(1);
+          }
+        });
       }
     );
+
+    // Hanterar anslutningsfel under AI-anropet.
+    request.on("error", (error) => {
+      console.error(
+        `Ollama-fel: ${error.message}`
+      );
+      process.exit(1);
+    });
 
     // Hanterar timeout.
-    request.on(
-      "timeout",
-      () => {
+    request.on("timeout", () => {
+      console.error(
+        `Ollama timeout efter ${OLLAMA_TIMEOUT_MS} ms.`
+      );
 
-        console.error(
-          `Ollama timeout efter ${OLLAMA_TIMEOUT_MS} ms.`
-        );
+      // Avslutar anslutningen.
+      request.destroy();
 
-        request.destroy();
-
-        process.exit(1);
-      }
-    );
+      process.exit(1);
+    });
 
     // Skickar prompten till Ollama.
     request.write(body);
 
     // Avslutar HTTP-anropet.
     request.end();
-
   } catch (error) {
-
     // Skriver ut ett tydligt fel om Ollama
     // eller modellen inte är tillgänglig.
     console.error(
