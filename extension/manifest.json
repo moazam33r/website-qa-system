@@ -8,15 +8,19 @@
   "description": "Automatiserat QA-system för webbplatser.",
 
   "action": {
-    "default_popup": "popup.html",
     "default_title": "Website QA System"
   },
 
   "permissions": [
-    "storage"
+    "storage",
+    "windows"
   ],
 
   "host_permissions": [
     "http://localhost:3000/*"
-  ]
+  ],
+
+  "background": {
+    "service_worker": "src/background.js"
+  }
 }
