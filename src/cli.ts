@@ -1,8 +1,8 @@
 import readline from "readline";
 import { chromium } from "@playwright/test";
-
 import { scanWebsite } from "./website-scanner";
 import { importWebsitesFromCSV } from "./checks/csv-import";
+import { createPDFReport } from "./report/pdf-report";
 
 const csvFile = process.argv[2];
 
@@ -121,12 +121,31 @@ async function runQA() {
         const page =
           await browser.newPage();
 
-        await scanWebsite(
-          page,
-          websiteUrl
-        );
+        // Kör hela QA-skanningen.
+const scanResult =
+  await scanWebsite(
+    page,
+    websiteUrl
+  );
 
-        await browser.close();
+// Skapar PDF-rapporten från QA-resultatet.
+const pdfPath =
+  await createPDFReport({
+    websiteUrl: scanResult.url,
+    results: scanResult.results,
+    aiAnalysis: scanResult.aiAnalysis,
+  });
+
+// Visar var PDF-rapporten sparades.
+console.log("\n========================================");
+console.log("          PDF-RAPPORT");
+console.log("========================================");
+
+console.log(
+  `\nPDF-rapport skapad:\n${pdfPath}`
+);
+
+await browser.close();
 
       } catch (error) {
 
