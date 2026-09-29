@@ -5,14 +5,21 @@
 // API-endpoint för vanlig QA-skanning av en webbplats.
 const API_URL = "http://localhost:3000/api/scan";
 
+// API-endpoint för vanlig QA-skanning med riktig progress.
+const SCAN_PROGRESS_API_URL =
+    "http://localhost:3000/api/scan-progress";
+
 // API-endpoint för vanlig CSV-skanning.
-const CSV_API_URL = "http://localhost:3000/api/scan-csv";
+const CSV_API_URL =
+    "http://localhost:3000/api/scan-csv";
 
 // API-endpoint för CSV-skanning med riktig progress.
-const CSV_PROGRESS_API_URL = "http://localhost:3000/api/scan-csv-progress";
+const CSV_PROGRESS_API_URL =
+    "http://localhost:3000/api/scan-csv-progress";
 
 // Basadress till backend-servern.
-const API_BASE_URL = "http://localhost:3000";
+const API_BASE_URL =
+    "http://localhost:3000";
 
 
 // =========================================================
@@ -20,40 +27,68 @@ const API_BASE_URL = "http://localhost:3000";
 // =========================================================
 
 // Inputfält för vanlig webbplats.
-const urlInput = document.getElementById("url");
+const urlInput =
+    document.getElementById("url");
 
 // Knapp för vanlig QA-skanning.
-const startButton = document.getElementById("scanButton");
+const startButton =
+    document.getElementById("scanButton");
 
 // CSV-filväljare.
-const csvFileInput = document.getElementById("csvFile");
+const csvFileInput =
+    document.getElementById("csvFile");
+
+// Området där användaren kan dra in en CSV-fil.
+const csvDropzone =
+    document.getElementById("csvDropzone");
+
+// Området där vald CSV-fil visas.
+const selectedFile =
+    document.getElementById("selectedFile");
+
+// Elementet där själva filnamnet visas.
+const selectedFileName =
+    document.getElementById("selectedFileName");
 
 // Knapp för CSV-skanning.
-const csvScanButton = document.getElementById("csvScanButton");
+const csvScanButton =
+    document.getElementById("csvScanButton");
 
 // Progress-container.
-const progressContainer = document.getElementById("progressContainer");
+const progressContainer =
+    document.getElementById("progressContainer");
 
 // Progress-status.
-const progressStatus = document.getElementById("progressStatus");
+const progressStatus =
+    document.getElementById("progressStatus");
 
 // Progress-procent.
-const progressPercent = document.getElementById("progressPercent");
+const progressPercent =
+    document.getElementById("progressPercent");
 
 // Själva progressbaren.
-const progressFill = document.getElementById("progressFill");
+const progressFill =
+    document.getElementById("progressFill");
 
 // Statusfält.
-const statusElement = document.getElementById("status");
+const statusElement =
+    document.getElementById("status");
 
 // Resultatområde.
-const resultsElement = document.getElementById("results");
+const resultsElement =
+    document.getElementById("results");
+
+// Hela området som innehåller PDF-knapparna.
+const pdfSection =
+    document.getElementById("pdfSection");
 
 // Knapp för att öppna PDF.
-const pdfButton = document.getElementById("pdfButton");
+const pdfButton =
+    document.getElementById("pdfButton");
 
 // Knapp för att ladda ner PDF.
-const downloadPdfButton = document.getElementById("downloadPdfButton");
+const downloadPdfButton =
+    document.getElementById("downloadPdfButton");
 
 
 // =========================================================
@@ -63,10 +98,7 @@ const downloadPdfButton = document.getElementById("downloadPdfButton");
 // URL till senaste PDF-rapporten.
 let latestPdfUrl = null;
 
-// Timer för vanlig QA-skanning.
-let progressTimer = null;
-
-// Aktuell progress.
+// Aktuell progress från backend.
 let currentProgress = 0;
 
 // Webbplatser i aktuell CSV-skanning.
@@ -74,6 +106,137 @@ let csvWebsites = [];
 
 // Antal färdiganalyserade webbplatser.
 let csvCompletedCount = 0;
+
+// Progress för varje webbplats i CSV-skanningen.
+let csvSitePercentages = [];
+
+
+// =========================================================
+// VISA VALD CSV-FIL
+// =========================================================
+
+// Uppdaterar UI:t när användaren väljer en CSV-fil.
+function showSelectedCSVFile(file) {
+
+    // Kontrollera att en fil faktiskt finns.
+    if (!file) {
+        return;
+    }
+
+    // Visa filens namn i popupen.
+    selectedFileName.textContent =
+        file.name;
+
+    // Visa området med vald fil.
+    selectedFile.hidden = false;
+}
+
+
+// =========================================================
+// KLICK PÅ CSV-OMRÅDET
+// =========================================================
+
+// När användaren väljer en fil via filväljaren.
+csvFileInput.addEventListener(
+    "change",
+    () => {
+
+        // Hämtar den valda filen.
+        const file =
+            csvFileInput.files[0];
+
+        // Visar filen i UI:t.
+        showSelectedCSVFile(file);
+    }
+);
+
+
+// =========================================================
+// DRAG & DROP
+// =========================================================
+
+// Förhindrar webbläsaren från att öppna filen direkt.
+csvDropzone.addEventListener(
+    "dragover",
+    (event) => {
+
+        // Förhindrar standardbeteendet.
+        event.preventDefault();
+
+        // Markerar drop-zonen visuellt.
+        csvDropzone.classList.add(
+            "drag-active"
+        );
+    }
+);
+
+
+// När användaren lämnar drop-zonen.
+csvDropzone.addEventListener(
+    "dragleave",
+    () => {
+
+        // Tar bort den visuella markeringen.
+        csvDropzone.classList.remove(
+            "drag-active"
+        );
+    }
+);
+
+
+// När användaren släpper filen.
+csvDropzone.addEventListener(
+    "drop",
+    (event) => {
+
+        // Förhindrar webbläsaren från att öppna filen.
+        event.preventDefault();
+
+        // Tar bort den visuella markeringen.
+        csvDropzone.classList.remove(
+            "drag-active"
+        );
+
+        // Hämtar den första filen som släpptes.
+        const file =
+            event.dataTransfer.files[0];
+
+        // Kontrollerar att det är en CSV-fil.
+        if (
+            !file ||
+            !file.name
+                .toLowerCase()
+                .endsWith(".csv")
+        ) {
+
+            // Visar ett tydligt fel.
+            setStatus(
+                "Välj en CSV-fil."
+            );
+
+            return;
+        }
+
+        // Skapar ett DataTransfer-objekt.
+        const dataTransfer =
+            new DataTransfer();
+
+        // Lägger till filen.
+        dataTransfer.items.add(file);
+
+        // Uppdaterar file-inputfältet.
+        csvFileInput.files =
+            dataTransfer.files;
+
+        // Visar filnamnet i UI:t.
+        showSelectedCSVFile(file);
+
+        // Visar information till användaren.
+        setStatus(
+            `CSV-fil vald: ${file.name}`
+        );
+    }
+);
 
 
 // =========================================================
@@ -84,13 +247,18 @@ let csvCompletedCount = 0;
 function normalizeWebsiteUrl(value) {
 
     // Tar bort mellanslag före och efter URL:en.
-    let url = String(value || "").trim();
+    let url =
+        String(value || "").trim();
 
     // Tar bort eventuell BOM från början av texten.
-    url = url.replace(/^\uFEFF/, "");
+    url =
+        url.replace(/^\uFEFF/, "");
 
     // Tar bort onödiga citattecken runt värdet.
-    url = url.replace(/^["']|["']$/g, "").trim();
+    url =
+        url
+            .replace(/^["']|["']$/g, "")
+            .trim();
 
     // Om användaren inte skrev något returneras tomt.
     if (!url) {
@@ -100,14 +268,19 @@ function normalizeWebsiteUrl(value) {
     // Om URL:en redan har http:// eller https://
     // låter vi den vara som den är.
     if (
-        url.toLowerCase().startsWith("http://") ||
-        url.toLowerCase().startsWith("https://")
+        url
+            .toLowerCase()
+            .startsWith("http://") ||
+        url
+            .toLowerCase()
+            .startsWith("https://")
     ) {
         return url;
     }
 
     // Om användaren exempelvis skriver:
     // digitalkontakt.se
+    //
     // lägger vi automatiskt till https://.
     return `https://${url}`;
 }
@@ -121,11 +294,12 @@ function normalizeWebsiteUrl(value) {
 function looksLikeWebsite(value) {
 
     // Rensar texten först.
-    const text = String(value || "")
-        .trim()
-        .replace(/^\uFEFF/, "")
-        .replace(/^["']|["']$/g, "")
-        .trim();
+    const text =
+        String(value || "")
+            .trim()
+            .replace(/^\uFEFF/, "")
+            .replace(/^["']|["']$/g, "")
+            .trim();
 
     // Tom text kan inte vara en webbplats.
     if (!text) {
@@ -133,32 +307,26 @@ function looksLikeWebsite(value) {
     }
 
     // Tar bort eventuell protokoll-del.
-    const withoutProtocol = text
-        .replace(/^https?:\/\//i, "")
-        .trim();
+    const withoutProtocol =
+        text
+            .replace(/^https?:\/\//i, "")
+            .trim();
 
     // Tar bort eventuell sökväg för kontrollen.
-    const hostnamePart = withoutProtocol.split("/")[0];
+    const hostnamePart =
+        withoutProtocol.split("/")[0];
 
     // Tar bort portnummer.
-    const hostname = hostnamePart.split(":")[0];
+    const hostname =
+        hostnamePart.split(":")[0];
 
     // Kontrollerar vanliga domännamn.
-    //
-    // Exempel som godkänns:
-    // digitalkontakt.se
-    // www.digitalkontakt.se
-    // example.com
-    // test.co.uk
-    //
-    // Exempel som inte godkänns:
-    // "url"
-    // "företagsnamn"
-    // "12345"
     const domainPattern =
         /^(www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
 
-    return domainPattern.test(hostname);
+    return domainPattern.test(
+        hostname
+    );
 }
 
 
@@ -185,24 +353,31 @@ function cleanCSVField(value) {
 // Försöker hitta vilken delimiter CSV-filen använder.
 //
 // Vanliga format:
-// , = komma
-// ; = semikolon
+//
+// ,  = komma
+// ;  = semikolon
 // \t = tab
 function detectCSVDelimiter(text) {
 
     // Hämtar de första raderna eftersom de oftast
     // innehåller kolumnstrukturen.
-    const sample = text
-        .split(/\r?\n/)
-        .slice(0, 10)
-        .join("\n");
+    const sample =
+        text
+            .split(/\r?\n/)
+            .slice(0, 10)
+            .join("\n");
 
     // Räknar antal förekomster av olika delimiters.
-    const commaCount = (sample.match(/,/g) || []).length;
-    const semicolonCount = (sample.match(/;/g) || []).length;
-    const tabCount = (sample.match(/\t/g) || []).length;
+    const commaCount =
+        (sample.match(/,/g) || []).length;
 
-    // Returnerar den delimiter som förekommer mest.
+    const semicolonCount =
+        (sample.match(/;/g) || []).length;
+
+    const tabCount =
+        (sample.match(/\t/g) || []).length;
+
+    // Semikolon används om det förekommer mest.
     if (
         semicolonCount > commaCount &&
         semicolonCount >= tabCount
@@ -210,6 +385,7 @@ function detectCSVDelimiter(text) {
         return ";";
     }
 
+    // Tab används om det förekommer mest.
     if (
         tabCount > commaCount &&
         tabCount > semicolonCount
@@ -229,13 +405,17 @@ function detectCSVDelimiter(text) {
 // Enkel men robust CSV-parser.
 //
 // Hanterar:
+//
 // - komma
 // - semikolon
 // - tab
 // - citattecken
 // - komma inne i citattecken
 // - radbrytningar inne i citattecken
-function parseCSV(text, delimiter) {
+function parseCSV(
+    text,
+    delimiter
+) {
 
     // Resultatet blir en array med rader.
     const rows = [];
@@ -250,30 +430,39 @@ function parseCSV(text, delimiter) {
     let insideQuotes = false;
 
     // Går igenom varje tecken.
-    for (let i = 0; i < text.length; i++) {
+    for (
+        let i = 0;
+        i < text.length;
+        i++
+    ) {
 
-        const char = text[i];
+        const char =
+            text[i];
 
         // Hanterar citattecken.
         if (char === '"') {
 
-            // Om vi redan är inne i citattecken och nästa tecken
-            // också är ett citattecken betyder det ett escape-tecken.
+            // Om vi redan är inne i citattecken och nästa
+            // tecken också är ett citattecken betyder det
+            // ett escaped citattecken.
             if (
                 insideQuotes &&
                 text[i + 1] === '"'
             ) {
+
                 field += '"';
+
                 i++;
+
                 continue;
             }
 
             // Växlar mellan inne/utanför citattecken.
-            insideQuotes = !insideQuotes;
+            insideQuotes =
+                !insideQuotes;
 
             continue;
         }
-
 
         // Om vi hittar delimiter utanför citattecken
         // avslutas fältet.
@@ -281,19 +470,25 @@ function parseCSV(text, delimiter) {
             char === delimiter &&
             !insideQuotes
         ) {
-            row.push(cleanCSVField(field));
+
+            row.push(
+                cleanCSVField(field)
+            );
+
             field = "";
+
             continue;
         }
 
-
         // Radbrytning utanför citattecken betyder ny rad.
         if (
-            (char === "\n" || char === "\r") &&
+            (char === "\n" ||
+                char === "\r") &&
             !insideQuotes
         ) {
 
-            // Vid Windows-radbrytning (\r\n) hoppar vi över \r.
+            // Vid Windows-radbrytning (\r\n)
+            // hoppar vi över \r.
             if (
                 char === "\r" &&
                 text[i + 1] === "\n"
@@ -302,14 +497,18 @@ function parseCSV(text, delimiter) {
             }
 
             // Lägger till sista fältet.
-            row.push(cleanCSVField(field));
+            row.push(
+                cleanCSVField(field)
+            );
 
             // Lägger till raden om den innehåller data.
             if (
                 row.some(
-                    value => value.length > 0
+                    value =>
+                        value.length > 0
                 )
             ) {
+
                 rows.push(row);
             }
 
@@ -320,25 +519,25 @@ function parseCSV(text, delimiter) {
             continue;
         }
 
-
         // Vanligt tecken läggs till i fältet.
         field += char;
     }
 
-
     // Hanterar sista fältet.
-    row.push(cleanCSVField(field));
-
+    row.push(
+        cleanCSVField(field)
+    );
 
     // Hanterar sista raden om filen inte slutade med radbrytning.
     if (
         row.some(
-            value => value.length > 0
+            value =>
+                value.length > 0
         )
     ) {
+
         rows.push(row);
     }
-
 
     return rows;
 }
@@ -352,11 +551,14 @@ function parseCSV(text, delimiter) {
 //
 // URL:en behöver inte ligga i första kolumnen.
 // Protokoll behöver inte heller anges.
-function extractWebsitesFromCSV(csvText) {
+function extractWebsitesFromCSV(
+    csvText
+) {
 
     // Tar bort BOM från början av filen.
-    const cleanedText = String(csvText || "")
-        .replace(/^\uFEFF/, "");
+    const cleanedText =
+        String(csvText || "")
+            .replace(/^\uFEFF/, "");
 
     // Om filen är tom returneras en tom lista.
     if (!cleanedText.trim()) {
@@ -364,68 +566,87 @@ function extractWebsitesFromCSV(csvText) {
     }
 
     // Försöker hitta CSV-formatet.
-    const delimiter = detectCSVDelimiter(cleanedText);
+    const delimiter =
+        detectCSVDelimiter(
+            cleanedText
+        );
 
     // Parsar CSV-filen.
-    const rows = parseCSV(
-        cleanedText,
-        delimiter
-    );
+    const rows =
+        parseCSV(
+            cleanedText,
+            delimiter
+        );
 
     // Här sparar vi hittade webbplatser.
     const foundWebsites = [];
 
-
     // Går igenom varje rad.
-    rows.forEach((row) => {
+    rows.forEach(
+        (row) => {
 
-        // Går igenom varje kolumn i raden.
-        row.forEach((cell) => {
+            // Går igenom varje kolumn i raden.
+            row.forEach(
+                (cell) => {
 
-            // Rensar cellen.
-            const value = cleanCSVField(cell);
+                    // Rensar cellen.
+                    const value =
+                        cleanCSVField(
+                            cell
+                        );
 
-            // Hoppar över tomma celler.
-            if (!value) {
-                return;
-            }
+                    // Hoppar över tomma celler.
+                    if (!value) {
+                        return;
+                    }
 
-            // Hoppar över vanliga rubriker.
-            const lowerValue = value.toLowerCase();
+                    // Hoppar över vanliga rubriker.
+                    const lowerValue =
+                        value.toLowerCase();
 
-            if (
-                lowerValue === "url" ||
-                lowerValue === "website" ||
-                lowerValue === "webbplats" ||
-                lowerValue === "webbsida" ||
-                lowerValue === "website url" ||
-                lowerValue === "websiteurl"
-            ) {
-                return;
-            }
+                    if (
+                        lowerValue === "url" ||
+                        lowerValue === "website" ||
+                        lowerValue === "webbplats" ||
+                        lowerValue === "webbsida" ||
+                        lowerValue === "website url" ||
+                        lowerValue === "websiteurl"
+                    ) {
+                        return;
+                    }
 
-            // Kontrollerar om värdet ser ut som en webbplats.
-            if (!looksLikeWebsite(value)) {
-                return;
-            }
+                    // Kontrollerar om värdet ser ut som en webbplats.
+                    if (
+                        !looksLikeWebsite(
+                            value
+                        )
+                    ) {
+                        return;
+                    }
 
-            // Gör URL:en komplett.
-            const normalizedUrl =
-                normalizeWebsiteUrl(value);
+                    // Gör URL:en komplett.
+                    const normalizedUrl =
+                        normalizeWebsiteUrl(
+                            value
+                        );
 
-            // Lägger till URL:en.
-            if (normalizedUrl) {
-                foundWebsites.push(normalizedUrl);
-            }
-        });
-    });
-
+                    // Lägger till URL:en.
+                    if (normalizedUrl) {
+                        foundWebsites.push(
+                            normalizedUrl
+                        );
+                    }
+                }
+            );
+        }
+    );
 
     // Tar bort dubbla webbplatser.
     const uniqueWebsites = [
-        ...new Set(foundWebsites)
+        ...new Set(
+            foundWebsites
+        )
     ];
-
 
     return uniqueWebsites;
 }
@@ -437,7 +658,9 @@ function extractWebsitesFromCSV(csvText) {
 
 // Visar meddelande i statusfältet.
 function setStatus(message) {
-    statusElement.textContent = message;
+
+    statusElement.textContent =
+        message;
 }
 
 
@@ -446,13 +669,48 @@ function setStatus(message) {
 // =========================================================
 
 // Uppdaterar progressbaren.
-function updateProgress(value, message = null) {
+//
+// Progressen kommer från backend.
+// Funktionen tillåter aldrig att progress går bakåt.
+function updateProgress(
+    value,
+    message = null
+) {
+
+    // Gör om värdet till ett nummer.
+    const numericValue =
+        Number(value);
+
+    // Om backend skickar något ogiltigt
+    // använder vi aktuell progress.
+    const safeValue =
+        Number.isFinite(numericValue)
+            ? numericValue
+            : currentProgress;
 
     // Begränsar värdet mellan 0 och 100.
-    currentProgress = Math.max(
-        0,
-        Math.min(100, value)
-    );
+    const nextProgress =
+        Math.max(
+            0,
+            Math.min(
+                100,
+                Math.round(
+                    safeValue
+                )
+            )
+        );
+
+    // Progress får aldrig gå bakåt.
+    if (
+        nextProgress <
+        currentProgress
+    ) {
+        return;
+    }
+
+    // Sparar den nya progressen.
+    currentProgress =
+        nextProgress;
 
     // Uppdaterar procenttexten.
     progressPercent.textContent =
@@ -464,16 +722,21 @@ function updateProgress(value, message = null) {
 
     // Uppdaterar texten om ett meddelande skickades.
     if (message) {
-        progressStatus.textContent = message;
+
+        progressStatus.textContent =
+            message;
     }
 }
 
 
 // =========================================================
-// VANLIG QA-PROGRESS
+// STARTA VANLIG PROGRESS
 // =========================================================
 
-// Startar progressbaren för vanlig QA-skanning.
+// Förbereder progressbaren för en ny vanlig skanning.
+//
+// Ingen timer används.
+// All progress kommer från backend.
 function startProgress() {
 
     // Börjar från 0%.
@@ -486,76 +749,19 @@ function startProgress() {
     );
 
     // Visar progressområdet.
-    progressContainer.hidden = false;
+    progressContainer.hidden =
+        false;
+
+    // Döljer PDF-sektionen tills analysen är klar.
+    pdfSection.hidden =
+        true;
 
     // Döljer PDF-knapparna.
-    pdfButton.hidden = true;
-    downloadPdfButton.hidden = true;
+    pdfButton.hidden =
+        true;
 
-    // Tar bort eventuell gammal timer.
-    if (progressTimer) {
-        clearInterval(progressTimer);
-    }
-
-    // Simulerar progress eftersom vanlig /api/scan
-    // inte skickar detaljerad progress.
-    progressTimer = setInterval(() => {
-
-        if (currentProgress < 70) {
-
-            currentProgress += 1;
-
-        } else if (currentProgress < 90) {
-
-            if (Math.random() > 0.5) {
-                currentProgress += 1;
-            }
-        }
-
-
-        let message =
-            "Startar QA-skanning...";
-
-
-        if (
-            currentProgress >= 25 &&
-            currentProgress < 50
-        ) {
-
-            message =
-                "Analyserar webbplats...";
-
-        } else if (
-            currentProgress >= 50 &&
-            currentProgress < 70
-        ) {
-
-            message =
-                "Kör QA-kontroller...";
-
-        } else if (
-            currentProgress >= 70 &&
-            currentProgress < 85
-        ) {
-
-            message =
-                "Analyserar resultat...";
-
-        } else if (
-            currentProgress >= 85
-        ) {
-
-            message =
-                "Slutför QA-skanning...";
-        }
-
-
-        updateProgress(
-            currentProgress,
-            message
-        );
-
-    }, 1000);
+    downloadPdfButton.hidden =
+        true;
 }
 
 
@@ -563,7 +769,7 @@ function startProgress() {
 // CSV-SIDOR
 // =========================================================
 
-// Visar status för varje webbplats.
+// Visar status och individuell progress för varje webbplats.
 //
 // ✓ = Klar
 // ⟳ = Analyserar
@@ -580,19 +786,21 @@ function renderCSVSiteProgress() {
         oldList.remove();
     }
 
-
     // Skapar nytt område.
     const progressList =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
 
     // CSS-klass.
     progressList.className =
         "csv-site-progress";
 
-
     // Rubrik.
     const heading =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
 
     heading.className =
         "csv-progress-title";
@@ -600,8 +808,9 @@ function renderCSVSiteProgress() {
     heading.innerHTML =
         "<strong>CSV QA-ANALYS</strong>";
 
-    progressList.appendChild(heading);
-
+    progressList.appendChild(
+        heading
+    );
 
     // Går igenom alla webbplatser.
     csvWebsites.forEach(
@@ -609,36 +818,44 @@ function renderCSVSiteProgress() {
 
             // Skapar rad.
             const row =
-                document.createElement("div");
+                document.createElement(
+                    "div"
+                );
 
             row.className =
                 "csv-site-row";
 
-
-            // Standard = väntar.
+            // Standardstatus = väntar.
             let icon = "○";
             let statusText = "Väntar";
 
+            // Hämtar progress för denna webbplats.
+            const sitePercentage =
+                csvSitePercentages[index] ||
+                0;
 
-            // Färdig webbplats.
+            // Webbplatsen är färdig.
             if (
-                index < csvCompletedCount
+                index <
+                csvCompletedCount
             ) {
 
                 icon = "✓";
-                statusText = "Klar";
 
+                statusText =
+                    "Klar — 100%";
 
-            // Nästa webbplats analyseras.
+            // Webbplatsen körs just nu.
             } else if (
-                index === csvCompletedCount
+                index ===
+                csvCompletedCount
             ) {
 
                 icon = "⟳";
-                statusText =
-                    "Analyserar...";
-            }
 
+                statusText =
+                    `Analyserar... — ${sitePercentage}%`;
+            }
 
             // Visar informationen.
             row.innerHTML = `
@@ -655,11 +872,11 @@ function renderCSVSiteProgress() {
                 </span>
             `;
 
-
-            progressList.appendChild(row);
+            progressList.appendChild(
+                row
+            );
         }
     );
-
 
     // Lägger listan längst upp.
     resultsElement.prepend(
@@ -673,27 +890,48 @@ function renderCSVSiteProgress() {
 // =========================================================
 
 // Startar riktig CSV-progress.
-// Ingen timer används här.
-function startCSVProgress(urls) {
+//
+// Ingen timer används.
+// Backend skickar den riktiga progressen.
+function startCSVProgress(
+    urls
+) {
 
     // Sparar URL-listan.
-    csvWebsites = [...urls];
+    csvWebsites = [
+        ...urls
+    ];
 
-    // Börjar med 0 färdiga.
+    // Börjar med noll färdiga webbplatser.
     csvCompletedCount = 0;
+
+    // Sätter alla webbplatser till 0%.
+    csvSitePercentages =
+        urls.map(
+            () => 0
+        );
 
     // Börjar från 0%.
     currentProgress = 0;
 
     // Visar progressområdet.
-    progressContainer.hidden = false;
+    progressContainer.hidden =
+        false;
 
-    // Döljer PDF-knappar.
-    pdfButton.hidden = true;
-    downloadPdfButton.hidden = true;
+    // Döljer PDF-sektionen.
+    pdfSection.hidden =
+        true;
+
+    // Döljer PDF-knapparna.
+    pdfButton.hidden =
+        true;
+
+    downloadPdfButton.hidden =
+        true;
 
     // Rensar gamla resultat.
-    resultsElement.innerHTML = "";
+    resultsElement.innerHTML =
+        "";
 
     // Visar startmeddelande.
     updateProgress(
@@ -710,13 +948,26 @@ function startCSVProgress(urls) {
 // UPPDATERA CSV-PROGRESS
 // =========================================================
 
-// Uppdaterar progress baserat på backendens riktiga progress.
-function updateCSVProgress(data) {
+// Uppdaterar CSV-progress från backend.
+//
+// Backend skickar bland annat:
+//
+// completed
+// total
+// percentage
+// sitePercentage
+// websiteUrl
+// message
+function updateCSVProgress(
+    data
+) {
 
-    // Kontrollerar att backend skickade rätt data.
+    // Kontrollerar att backend skickade grundläggande data.
     if (
-        typeof data.completed !== "number" ||
-        typeof data.total !== "number"
+        typeof data.completed !==
+            "number" ||
+        typeof data.total !==
+            "number"
     ) {
         return;
     }
@@ -725,55 +976,85 @@ function updateCSVProgress(data) {
     csvCompletedCount =
         data.completed;
 
+    // Backendets individuella progress
+    // för aktuell webbplats.
+    const sitePercentage =
+        typeof data.sitePercentage ===
+            "number"
+            ? Math.max(
+                0,
+                Math.min(
+                    100,
+                    Math.round(
+                        data.sitePercentage
+                    )
+                )
+            )
+            : 0;
 
-    // Visar vilken webbplats som analyseras.
+    // Den aktuella webbplatsen är
+    // samma index som antal färdiga.
+    const currentIndex =
+        data.completed;
+
+    // Sparar progressen för aktuell webbplats.
     if (
-        data.completed < data.total
+        currentIndex >= 0 &&
+        currentIndex <
+            csvSitePercentages.length
     ) {
 
-        updateProgress(
-            data.percentage,
-            `Analyserar webbplats ${data.completed + 1} av ${data.total}`
-        );
-
-    } else {
-
-        // Alla webbplatser är klara.
-        updateProgress(
-            data.percentage,
-            "Alla webbplatser analyserade."
-        );
+        // Progressen får inte minska.
+        csvSitePercentages[
+            currentIndex
+        ] =
+            Math.max(
+                csvSitePercentages[
+                    currentIndex
+                ],
+                sitePercentage
+            );
     }
 
+    // Använder backendets totala progress.
+    const overallPercentage =
+        typeof data.percentage ===
+            "number"
+            ? data.percentage
+            : currentProgress;
 
-    // Uppdaterar ✓ / ⟳ / ○.
-    renderCSVSiteProgress();
-}
-
-
-// =========================================================
-// AVSLUTA PROGRESS
-// =========================================================
-
-// Avslutar progressbaren.
-function finishProgress() {
-
-    // Stoppar timer.
-    if (progressTimer) {
-
-        clearInterval(
-            progressTimer
+    // Använder backendets meddelande om det finns.
+    const message =
+        data.message ||
+        (
+            data.completed <
+            data.total
+                ? `Analyserar webbplats ${data.completed + 1} av ${data.total}`
+                : "Alla webbplatser analyserade."
         );
 
-        progressTimer = null;
-    }
-
-
-    // Visar 100%.
+    // Uppdaterar den stora progressbaren.
     updateProgress(
-        100,
-        "QA-skanning klar."
+        overallPercentage,
+        message
     );
+
+    // Om aktuell webbplats rapporterar 100%
+    // markerar vi den som färdig.
+    if (
+        sitePercentage >= 100 &&
+        currentIndex >= 0 &&
+        currentIndex <
+            csvSitePercentages.length
+    ) {
+
+        csvSitePercentages[
+            currentIndex
+        ] = 100;
+    }
+
+    // Uppdaterar webbplatslistan.
+    renderCSVSiteProgress();
 }
 
 
@@ -782,15 +1063,18 @@ function finishProgress() {
 // =========================================================
 
 // Gör PDF-URL absolut.
-function createAbsolutePdfUrl(pdfUrl) {
+function createAbsolutePdfUrl(
+    pdfUrl
+) {
 
+    // Om backend inte skickade någon PDF returneras null.
     if (!pdfUrl) {
         return null;
     }
 
-
     try {
 
+        // Gör URL:en absolut baserat på backend-adressen.
         return new URL(
             pdfUrl,
             API_BASE_URL
@@ -798,6 +1082,7 @@ function createAbsolutePdfUrl(pdfUrl) {
 
     } catch (error) {
 
+        // Loggar eventuellt URL-fel.
         console.error(
             "Kunde inte skapa PDF-URL:",
             error
@@ -809,20 +1094,63 @@ function createAbsolutePdfUrl(pdfUrl) {
 
 
 // =========================================================
+// VISA PDF-KNAPPAR
+// =========================================================
+
+// Visar PDF-sektionen när en PDF finns.
+function showPdfButtons(
+    pdfUrl
+) {
+
+    // Skapar en absolut PDF-URL.
+    const absolutePdfUrl =
+        createAbsolutePdfUrl(
+            pdfUrl
+        );
+
+    // Om URL:en inte kunde skapas gör vi inget.
+    if (!absolutePdfUrl) {
+        return;
+    }
+
+    // Sparar PDF-URL:en för knapparna.
+    latestPdfUrl =
+        absolutePdfUrl;
+
+    // Visar hela PDF-sektionen.
+    pdfSection.hidden =
+        false;
+
+    // Visar knappen för att öppna PDF.
+    pdfButton.hidden =
+        false;
+
+    // Visar knappen för att ladda ner PDF.
+    downloadPdfButton.hidden =
+        false;
+}
+
+
+// =========================================================
 // VISA VANLIGA RESULTAT
 // =========================================================
 
 // Visar resultat från vanlig QA-skanning.
-function displayResults(data) {
+function displayResults(
+    data
+) {
 
-    resultsElement.innerHTML = "";
-
+    // Rensar gamla resultat.
+    resultsElement.innerHTML =
+        "";
 
     // Visar övergripande status.
     if (data.overallStatus) {
 
         const overall =
-            document.createElement("div");
+            document.createElement(
+                "div"
+            );
 
         overall.className =
             "result-summary";
@@ -837,38 +1165,46 @@ function displayResults(data) {
         );
     }
 
-
     // Visar QA-resultat.
     if (
         data.results &&
-        Array.isArray(data.results)
+        Array.isArray(
+            data.results
+        )
     ) {
 
+        // Räknar PASS.
         const passCount =
             data.results.filter(
                 result =>
-                    result.status === "PASS"
+                    result.status ===
+                    "PASS"
             ).length;
 
+        // Räknar WARNING.
         const warningCount =
             data.results.filter(
                 result =>
-                    result.status === "WARNING"
+                    result.status ===
+                    "WARNING"
             ).length;
 
+        // Räknar FAIL.
         const failCount =
             data.results.filter(
                 result =>
-                    result.status === "FAIL"
+                    result.status ===
+                    "FAIL"
             ).length;
 
-
+        // Skapar sammanfattning.
         const summary =
-            document.createElement("div");
+            document.createElement(
+                "div"
+            );
 
         summary.className =
             "result-summary";
-
 
         summary.innerHTML = `
             <strong>QA-resultat</strong><br>
@@ -877,27 +1213,17 @@ function displayResults(data) {
             FAIL: ${failCount}
         `;
 
-
         resultsElement.appendChild(
             summary
         );
     }
 
-
-    // Visar PDF-knappar om PDF finns.
+    // Visar PDF om backend skickade en PDF-URL.
     if (data.pdfUrl) {
 
-        latestPdfUrl =
-            createAbsolutePdfUrl(
-                data.pdfUrl
-            );
-
-
-        if (latestPdfUrl) {
-
-            pdfButton.hidden = false;
-            downloadPdfButton.hidden = false;
-        }
+        showPdfButtons(
+            data.pdfUrl
+        );
     }
 }
 
@@ -907,18 +1233,22 @@ function displayResults(data) {
 // =========================================================
 
 // Visar slutresultatet från CSV-skanningen.
-function displayCSVResults(data) {
+function displayCSVResults(
+    data
+) {
 
-    resultsElement.innerHTML = "";
-
+    // Rensar gamla resultat.
+    resultsElement.innerHTML =
+        "";
 
     // Sammanfattning.
     const title =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
 
     title.className =
         "csv-result";
-
 
     title.innerHTML = `
         <strong>CSV-resultat</strong><br>
@@ -927,16 +1257,16 @@ function displayCSVResults(data) {
         Misslyckade: ${data.failed}
     `;
 
-
     resultsElement.appendChild(
         title
     );
 
-
     // Visar varje webbplats.
     if (
         data.results &&
-        Array.isArray(data.results)
+        Array.isArray(
+            data.results
+        )
     ) {
 
         data.results.forEach(
@@ -950,7 +1280,7 @@ function displayCSVResults(data) {
                 siteResult.className =
                     "csv-result";
 
-
+                // Om webbplatsen lyckades.
                 if (site.success) {
 
                     siteResult.innerHTML = `
@@ -960,6 +1290,7 @@ function displayCSVResults(data) {
                         Status: QA klar
                     `;
 
+                // Om webbplatsen misslyckades.
                 } else {
 
                     siteResult.innerHTML = `
@@ -971,7 +1302,6 @@ function displayCSVResults(data) {
                     `;
                 }
 
-
                 resultsElement.appendChild(
                     siteResult
                 );
@@ -979,43 +1309,32 @@ function displayCSVResults(data) {
         );
     }
 
-
-    // Visar PDF-information.
+    // Visar PDF-information om en samlad PDF finns.
     if (data.pdfUrl) {
 
-        latestPdfUrl =
-            createAbsolutePdfUrl(
-                data.pdfUrl
+        const pdfContainer =
+            document.createElement(
+                "div"
             );
 
+        pdfContainer.className =
+            "csv-pdf-link";
 
-        if (latestPdfUrl) {
+        pdfContainer.innerHTML = `
+            <strong>
+                Samlad PDF-rapport
+            </strong><br>
+            PDF-rapporten är klar.
+        `;
 
-            const pdfContainer =
-                document.createElement(
-                    "div"
-                );
+        resultsElement.appendChild(
+            pdfContainer
+        );
 
-            pdfContainer.className =
-                "csv-pdf-link";
-
-
-            pdfContainer.innerHTML = `
-                <strong>
-                    Samlad PDF-rapport
-                </strong><br>
-                PDF-rapporten är klar.
-            `;
-
-
-            resultsElement.appendChild(
-                pdfContainer
-            );
-
-
-            pdfButton.hidden = false;
-            downloadPdfButton.hidden = false;
-        }
+        // Visar PDF-sektionen och knapparna.
+        showPdfButtons(
+            data.pdfUrl
+        );
     }
 }
 
@@ -1029,15 +1348,18 @@ startButton.addEventListener(
     async () => {
 
         // Hämtar URL och gör den till en komplett URL.
+        //
         // Exempel:
+        //
         // digitalkontakt.se
+        //
         // blir:
+        //
         // https://digitalkontakt.se
         const url =
             normalizeWebsiteUrl(
                 urlInput.value
             );
-
 
         // Kontrollerar URL.
         if (!url) {
@@ -1049,32 +1371,43 @@ startButton.addEventListener(
             return;
         }
 
-
         // Rensar gamla resultat.
-        resultsElement.innerHTML = "";
+        resultsElement.innerHTML =
+            "";
 
         // Nollställer PDF.
-        latestPdfUrl = null;
+        latestPdfUrl =
+            null;
 
-        // Döljer PDF-knappar.
-        pdfButton.hidden = true;
-        downloadPdfButton.hidden = true;
+        // Döljer PDF-sektionen.
+        pdfSection.hidden =
+            true;
 
-        // Startar progress.
+        // Döljer PDF-knapparna.
+        pdfButton.hidden =
+            true;
+
+        downloadPdfButton.hidden =
+            true;
+
+        // Startar progress från 0%.
         startProgress();
 
-        // Inaktiverar knappen.
-        startButton.disabled = true;
-
+        // Inaktiverar knappen under skanningen.
+        startButton.disabled =
+            true;
 
         try {
 
-            // Skickar den normaliserade URL:en till backend.
+            // =================================================
+            // STARTA SSE-SKANNING
+            // =================================================
+
+            // Skickar URL till backendens progress-endpoint.
             const response =
                 await fetch(
-                    API_URL,
+                    SCAN_PROGRESS_API_URL,
                     {
-
                         method: "POST",
 
                         headers: {
@@ -1088,42 +1421,263 @@ startButton.addEventListener(
                     }
                 );
 
-
-            // Läser JSON.
-            const data =
-                await response.json();
-
-
-            // Hanterar backend-fel.
+            // Kontrollerar HTTP-status.
             if (!response.ok) {
 
+                let errorMessage =
+                    `QA-skanningen misslyckades (${response.status}).`;
+
+                try {
+
+                    // Försöker läsa backendens felmeddelande.
+                    const errorData =
+                        await response.json();
+
+                    errorMessage =
+                        errorData.error ||
+                        errorMessage;
+
+                } catch (error) {
+
+                    // Standardmeddelandet används
+                    // om svaret inte är JSON.
+                }
+
                 throw new Error(
-                    data.error ||
-                    "QA-skanningen misslyckades."
+                    errorMessage
                 );
             }
 
+            // Kontrollerar att backend skickade en stream.
+            if (!response.body) {
 
-            // Backend är klar.
-            finishProgress();
+                throw new Error(
+                    "Backend skickade ingen progress-stream."
+                );
+            }
 
-            // Visar resultat.
-            displayResults(data);
+            // Hämtar stream-läsaren.
+            const reader =
+                response.body.getReader();
 
-            // Visar slutstatus.
-            setStatus(
-                "QA-skanning klar."
-            );
+            // Omvandlar bytes till text.
+            const decoder =
+                new TextDecoder();
+
+            // Buffer för SSE-data.
+            let buffer = "";
+
+            // =================================================
+            // LÄS SSE-STREAMEN
+            // =================================================
+
+            while (true) {
+
+                // Läser nästa del av streamen.
+                const {
+                    value,
+                    done
+                } = await reader.read();
+
+                // Streamen är färdig.
+                if (done) {
+                    break;
+                }
+
+                // Lägger till ny data i buffern.
+                buffer +=
+                    decoder.decode(
+                        value,
+                        {
+                            stream: true
+                        }
+                    );
+
+                // SSE-event separeras med tom rad.
+                const events =
+                    buffer.split(
+                        /\r?\n\r?\n/
+                    );
+
+                // Sparar event som ännu inte är kompletta.
+                buffer =
+                    events.pop() || "";
+
+                // Hanterar kompletta events.
+                for (
+                    const eventText of events
+                ) {
+
+                    // Delar eventet i rader.
+                    const eventLines =
+                        eventText.split(
+                            /\r?\n/
+                        );
+
+                    // Eventtyp.
+                    let eventType = "";
+
+                    // JSON-data.
+                    let eventData = "";
+
+                    // Läser eventets rader.
+                    eventLines.forEach(
+                        (line) => {
+
+                            // Läser eventtyp.
+                            if (
+                                line.startsWith(
+                                    "event:"
+                                )
+                            ) {
+
+                                eventType =
+                                    line
+                                        .replace(
+                                            "event:",
+                                            ""
+                                        )
+                                        .trim();
+                            }
+
+                            // Läser data.
+                            if (
+                                line.startsWith(
+                                    "data:"
+                                )
+                            ) {
+
+                                eventData +=
+                                    line
+                                        .replace(
+                                            "data:",
+                                            ""
+                                        )
+                                        .trim();
+                            }
+                        }
+                    );
+
+                    // Hoppar över tomma events.
+                    if (
+                        !eventType ||
+                        !eventData
+                    ) {
+                        continue;
+                    }
+
+                    // Försöker läsa JSON.
+                    let data;
+
+                    try {
+
+                        data =
+                            JSON.parse(
+                                eventData
+                            );
+
+                    } catch (error) {
+
+                        console.error(
+                            "Kunde inte läsa SSE-data:",
+                            eventData
+                        );
+
+                        continue;
+                    }
+
+
+                    // -----------------------------------------
+                    // START
+                    // -----------------------------------------
+
+                    if (
+                        eventType ===
+                        "started"
+                    ) {
+
+                        // Backend säger att skanningen har startat.
+                        updateProgress(
+                            data.percentage ??
+                                0,
+                            data.message ||
+                                "Startar QA-skanning..."
+                        );
+                    }
+
+
+                    // -----------------------------------------
+                    // PROGRESS
+                    // -----------------------------------------
+
+                    else if (
+                        eventType ===
+                        "progress"
+                    ) {
+
+                        // Backendets riktiga progress används.
+                        updateProgress(
+                            data.percentage,
+                            data.message
+                        );
+                    }
+
+
+                    // -----------------------------------------
+                    // KLAR
+                    // -----------------------------------------
+
+                    else if (
+                        eventType ===
+                        "complete"
+                    ) {
+
+                        // Backend skickar complete först
+                        // när QA + PDF är färdiga.
+                        updateProgress(
+                            data.percentage ??
+                                100,
+                            data.message ||
+                                "QA-skanning och PDF-rapport är klara."
+                        );
+
+                        // Visar slutresultatet.
+                        displayResults(
+                            data
+                        );
+
+                        // Visar slutstatus.
+                        setStatus(
+                            "QA-skanning klar."
+                        );
+                    }
+
+
+                    // -----------------------------------------
+                    // FEL
+                    // -----------------------------------------
+
+                    else if (
+                        eventType ===
+                        "error"
+                    ) {
+
+                        throw new Error(
+                            data.error ||
+                                "QA-skanningen misslyckades."
+                        );
+                    }
+                }
+            }
 
         } catch (error) {
 
-            finishProgress();
-
+            // Visar fel.
             setStatus(
                 `FEL: ${error.message}`
             );
 
-
+            // Visar felet.
             resultsElement.innerHTML = `
                 <div class="csv-result">
                     <strong>
@@ -1136,7 +1690,8 @@ startButton.addEventListener(
         } finally {
 
             // Aktiverar knappen igen.
-            startButton.disabled = false;
+            startButton.disabled =
+                false;
         }
     }
 );
@@ -1163,11 +1718,9 @@ csvScanButton.addEventListener(
             return;
         }
 
-
         // Hämtar filen.
         const file =
             csvFileInput.files[0];
-
 
         // Kontrollerar filändelse.
         if (
@@ -1183,17 +1736,16 @@ csvScanButton.addEventListener(
             return;
         }
 
-
         try {
 
             // Läser CSV-filen.
             const csvText =
                 await file.text();
 
-
             // Hämtar webbplatser från hela CSV-filen.
             //
             // Funktionen hittar URL:er även om:
+            //
             // - protokoll saknas
             // - URL ligger i en annan kolumn
             // - CSV använder ; istället för ,
@@ -1203,16 +1755,16 @@ csvScanButton.addEventListener(
                     csvText
                 );
 
-
             // Loggar hittade webbplatser för felsökning.
             console.log(
                 "Webbplatser hittade i CSV:",
                 urls
             );
 
-
             // Kontrollerar att URL hittades.
-            if (urls.length === 0) {
+            if (
+                urls.length === 0
+            ) {
 
                 setStatus(
                     "Inga giltiga webbplatser hittades i CSV-filen."
@@ -1221,41 +1773,50 @@ csvScanButton.addEventListener(
                 return;
             }
 
-
             // Visar hur många webbplatser som hittades.
             setStatus(
                 `${urls.length} webbplatser hittades. Startar QA...`
             );
 
-
             // Rensar gamla resultat.
-            resultsElement.innerHTML = "";
+            resultsElement.innerHTML =
+                "";
 
             // Nollställer PDF.
-            latestPdfUrl = null;
+            latestPdfUrl =
+                null;
 
-            // Döljer PDF-knappar.
-            pdfButton.hidden = true;
-            downloadPdfButton.hidden = true;
+            // Döljer PDF-sektionen.
+            pdfSection.hidden =
+                true;
+
+            // Döljer PDF-knapparna.
+            pdfButton.hidden =
+                true;
+
+            downloadPdfButton.hidden =
+                true;
 
             // Inaktiverar CSV-knappen.
-            csvScanButton.disabled = true;
-
+            csvScanButton.disabled =
+                true;
 
             // Startar riktig CSV-progress.
             startCSVProgress(
                 urls
             );
 
-
             try {
+
+                // =================================================
+                // STARTA CSV-PROGRESS STREAM
+                // =================================================
 
                 // Skickar URL-listan till progress-endpointen.
                 const response =
                     await fetch(
                         CSV_PROGRESS_API_URL,
                         {
-
                             method: "POST",
 
                             headers: {
@@ -1269,19 +1830,17 @@ csvScanButton.addEventListener(
                         }
                     );
 
-
                 // Kontrollerar HTTP-status.
                 if (!response.ok) {
 
                     let errorMessage =
                         `CSV-skanningen misslyckades (${response.status}).`;
 
-
                     try {
 
+                        // Försöker läsa backendens felmeddelande.
                         const errorData =
                             await response.json();
-
 
                         errorMessage =
                             errorData.error ||
@@ -1289,15 +1848,14 @@ csvScanButton.addEventListener(
 
                     } catch (error) {
 
-                        // Använder standardfelet om svaret inte är JSON.
+                        // Standardfelet används
+                        // om svaret inte är JSON.
                     }
-
 
                     throw new Error(
                         errorMessage
                     );
                 }
-
 
                 // Kontrollerar att streaming finns.
                 if (!response.body) {
@@ -1307,35 +1865,33 @@ csvScanButton.addEventListener(
                     );
                 }
 
-
                 // Hämtar stream-läsaren.
                 const reader =
                     response.body.getReader();
-
 
                 // Omvandlar bytes till text.
                 const decoder =
                     new TextDecoder();
 
-
                 // Buffer för SSE-data.
                 let buffer = "";
 
+                // =================================================
+                // LÄS CSV SSE-STREAM
+                // =================================================
 
-                // Läser streamen.
                 while (true) {
 
+                    // Läser streamen.
                     const {
                         value,
                         done
                     } = await reader.read();
 
-
                     // Streamen är klar.
                     if (done) {
                         break;
                     }
-
 
                     // Lägger ny data i buffern.
                     buffer +=
@@ -1346,18 +1902,15 @@ csvScanButton.addEventListener(
                             }
                         );
 
-
                     // SSE-event separeras med tom rad.
                     const events =
                         buffer.split(
                             /\r?\n\r?\n/
                         );
 
-
                     // Sparar event som ännu inte är komplett.
                     buffer =
                         events.pop() || "";
-
 
                     // Hanterar kompletta events.
                     for (
@@ -1370,15 +1923,17 @@ csvScanButton.addEventListener(
                                 /\r?\n/
                             );
 
-
+                        // Eventtyp.
                         let eventType = "";
-                        let eventData = "";
 
+                        // JSON-data.
+                        let eventData = "";
 
                         // Läser eventets innehåll.
                         eventLines.forEach(
                             (line) => {
 
+                                // Läser eventtyp.
                                 if (
                                     line.startsWith(
                                         "event:"
@@ -1394,7 +1949,7 @@ csvScanButton.addEventListener(
                                             .trim();
                                 }
 
-
+                                // Läser data.
                                 if (
                                     line.startsWith(
                                         "data:"
@@ -1412,7 +1967,6 @@ csvScanButton.addEventListener(
                             }
                         );
 
-
                         // Hoppar över tomma events.
                         if (
                             !eventType ||
@@ -1421,10 +1975,8 @@ csvScanButton.addEventListener(
                             continue;
                         }
 
-
                         // Läser JSON.
                         let data;
-
 
                         try {
 
@@ -1453,11 +2005,15 @@ csvScanButton.addEventListener(
                             "started"
                         ) {
 
+                            // Backend skickar startprogress.
                             updateProgress(
-                                0,
-                                "Startar QA-analys..."
+                                data.percentage ??
+                                    0,
+                                data.message ||
+                                    "Startar QA-analys..."
                             );
 
+                            // Uppdaterar webbplatslistan.
                             renderCSVSiteProgress();
                         }
 
@@ -1471,26 +2027,33 @@ csvScanButton.addEventListener(
                             "website-start"
                         ) {
 
-                            // Visar att webbplatsen faktiskt
-                            // har börjat analyseras.
+                            // Backend berättar vilken webbplats
+                            // som faktiskt har startat.
                             const websiteNumber =
                                 data.completed + 1;
 
-
-                            // Första webbplatsen får 2% så att
-                            // progressbaren inte står kvar på 0%.
-                            const startPercentage =
-                                data.completed === 0
-                                    ? 2
-                                    : data.percentage;
-
-
-                            // Uppdaterar progressbaren.
+                            // Använder backendets riktiga progress.
+                            //
+                            // Ingen fake 2% används.
                             updateProgress(
-                                startPercentage,
-                                `Analyserar webbplats ${websiteNumber} av ${data.total}`
+                                data.percentage ??
+                                    currentProgress,
+                                data.message ||
+                                    `Analyserar webbplats ${websiteNumber} av ${data.total}`
                             );
 
+                            // Nollställer individuell progress
+                            // för den nya webbplatsen.
+                            if (
+                                data.completed >= 0 &&
+                                data.completed <
+                                    csvSitePercentages.length
+                            ) {
+
+                                csvSitePercentages[
+                                    data.completed
+                                ] = 0;
+                            }
 
                             // Uppdaterar listan.
                             renderCSVSiteProgress();
@@ -1506,7 +2069,8 @@ csvScanButton.addEventListener(
                             "progress"
                         ) {
 
-                            // En webbplats har blivit färdig.
+                            // Använder backendets riktiga
+                            // totala och individuella progress.
                             updateCSVProgress(
                                 data
                             );
@@ -1522,10 +2086,12 @@ csvScanButton.addEventListener(
                             "pdf"
                         ) {
 
+                            // Backend bestämmer själv vilken
+                            // progress som ska visas.
                             updateProgress(
-                                95,
+                                data.percentage,
                                 data.message ||
-                                "Skapar PDF-rapport..."
+                                    "PDF-rapporten är klar."
                             );
                         }
 
@@ -1539,17 +2105,37 @@ csvScanButton.addEventListener(
                             "complete"
                         ) {
 
+                            // Backend skickar complete först
+                            // när hela CSV-analysen och PDF:en
+                            // är färdig.
                             updateProgress(
-                                100,
-                                "CSV QA-analys klar."
+                                data.percentage ??
+                                    100,
+                                data.message ||
+                                    "CSV QA-analys och PDF-rapport är klara."
                             );
 
+                            // Säkerställer att alla webbplatser
+                            // visas som färdiga.
+                            csvCompletedCount =
+                                data.completed ??
+                                csvWebsites.length;
 
+                            // Alla webbplatser är 100%.
+                            csvSitePercentages =
+                                csvWebsites.map(
+                                    () => 100
+                                );
+
+                            // Uppdaterar listan en sista gång.
+                            renderCSVSiteProgress();
+
+                            // Visar slutresultatet.
                             displayCSVResults(
                                 data
                             );
 
-
+                            // Visar slutstatus.
                             setStatus(
                                 "CSV QA-skanning klar."
                             );
@@ -1567,7 +2153,7 @@ csvScanButton.addEventListener(
 
                             throw new Error(
                                 data.error ||
-                                "CSV-skanningen misslyckades."
+                                    "CSV-skanningen misslyckades."
                             );
                         }
                     }
@@ -1575,23 +2161,10 @@ csvScanButton.addEventListener(
 
             } catch (error) {
 
-                // Stoppar vanlig progress-timer om
-                // den skulle vara aktiv.
-                if (progressTimer) {
-
-                    clearInterval(
-                        progressTimer
-                    );
-
-                    progressTimer = null;
-                }
-
-
                 // Visar fel.
                 setStatus(
                     `FEL: ${error.message}`
                 );
-
 
                 // Visar felet.
                 resultsElement.innerHTML = `
@@ -1606,7 +2179,8 @@ csvScanButton.addEventListener(
             } finally {
 
                 // Aktiverar CSV-knappen igen.
-                csvScanButton.disabled = false;
+                csvScanButton.disabled =
+                    false;
             }
 
         } catch (error) {
@@ -1616,7 +2190,6 @@ csvScanButton.addEventListener(
                 "CSV-fel:",
                 error
             );
-
 
             setStatus(
                 `FEL: Kunde inte läsa CSV-filen. ${error.message}`
@@ -1644,8 +2217,7 @@ pdfButton.addEventListener(
             return;
         }
 
-
-        // Öppnar PDF i ny flik.
+        // Öppnar PDF i en ny flik.
         window.open(
             latestPdfUrl,
             "_blank"
@@ -1672,7 +2244,6 @@ downloadPdfButton.addEventListener(
             return;
         }
 
-
         try {
 
             // Visar status.
@@ -1680,13 +2251,11 @@ downloadPdfButton.addEventListener(
                 "Laddar ner PDF..."
             );
 
-
             // Hämtar PDF.
             const response =
                 await fetch(
                     latestPdfUrl
                 );
-
 
             // Kontrollerar svar.
             if (!response.ok) {
@@ -1696,11 +2265,9 @@ downloadPdfButton.addEventListener(
                 );
             }
 
-
             // Läser PDF som Blob.
             const blob =
                 await response.blob();
-
 
             // Skapar temporär URL.
             const blobUrl =
@@ -1708,40 +2275,35 @@ downloadPdfButton.addEventListener(
                     blob
                 );
 
-
             // Skapar temporär länk.
             const link =
                 document.createElement(
                     "a"
                 );
 
-
+            // Sätter Blob-URL.
             link.href =
                 blobUrl;
 
+            // Anger filnamnet.
             link.download =
                 "Website-QA-Report.pdf";
-
 
             // Lägger till länken.
             document.body.appendChild(
                 link
             );
 
-
             // Startar nedladdningen.
             link.click();
 
-
             // Tar bort länken.
             link.remove();
-
 
             // Frigör Blob-URL.
             URL.revokeObjectURL(
                 blobUrl
             );
-
 
             // Visar status.
             setStatus(

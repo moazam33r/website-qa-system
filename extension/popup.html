@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html lang="sv">
+
 <head>
   <meta charset="UTF-8">
 
-  <!-- Gör popupen responsiv -->
+  <!-- Gör gränssnittet responsivt -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Titel för extensionen -->
+  <!-- Titel för extension-fönstret -->
   <title>Website QA System</title>
 
   <!-- Kopplar popupens CSS -->
@@ -15,82 +16,243 @@
 
 <body>
 
-  <!-- Huvudcontainer för extensionen -->
+  <!-- Huvudcontainer för hela QA-systemet -->
   <main class="container">
 
-    <!-- Titel -->
-    <h1>Website QA System</h1>
+    <!-- ================================= -->
+    <!-- HEADER -->
+    <!-- ================================= -->
 
-    <!-- Kort beskrivning -->
-    <p class="description">
-      Automatiserad QA-granskning av webbplatser.
-    </p>
+    <header class="header">
 
+      <!-- Vänster sida av headern -->
+      <div class="brand">
 
-    <!-- ========================= -->
-    <!-- ENKEL WEBBPLATS-SKANNING -->
-    <!-- ========================= -->
+        <!-- Enkel ikon för QA-systemet -->
+        <div class="brand-icon">
+          ✓
+        </div>
 
-    <!-- Etikett för URL-fältet -->
-    <label for="url">
-      Website URL
-    </label>
+        <!-- Namn och beskrivning -->
+        <div>
+          <h1>Website QA System</h1>
 
-    <!-- Fält där användaren skriver in webbplatsen -->
-    <input
-      id="url"
-      type="url"
-      placeholder="https://example.se"
-    >
+          <p class="description">
+            Automated website quality assurance
+          </p>
+        </div>
 
-    <!-- Knapp för vanlig QA-skanning -->
-    <button id="scanButton">
-      Start QA
-    </button>
+      </div>
 
+      <!-- Visar att systemet är redo -->
+      <div class="system-status">
+        <span class="status-dot"></span>
+        Ready
+      </div>
 
-    <!-- ========================= -->
-    <!-- CSV-SKANNING -->
-    <!-- ========================= -->
-
-    <!-- Rubrik för CSV-funktionen -->
-    <h2>CSV QA Scan</h2>
-
-    <!-- Beskrivning av CSV-funktionen -->
-    <p class="csv-description">
-      Välj en CSV-fil med webbplatser som ska testas.
-    </p>
-
-    <!-- Filväljare för CSV -->
-    <input
-      id="csvFile"
-      type="file"
-      accept=".csv"
-    >
-
-    <!-- Knapp för att starta CSV-skanning -->
-    <button
-      id="csvScanButton"
-      type="button"
-    >
-      Start CSV QA
-    </button>
+    </header>
 
 
-    <!-- Område för progressbaren -->
-    <div
+    <!-- ================================= -->
+    <!-- URL SCAN -->
+    <!-- ================================= -->
+
+    <section class="card">
+
+      <!-- Sektionens rubrik -->
+      <div class="section-header">
+
+        <div>
+          <span class="section-label">
+            WEBSITE SCAN
+          </span>
+
+          <h2>
+            Analyze a website
+          </h2>
+
+          <p>
+            Enter a website URL to start a complete QA analysis.
+          </p>
+        </div>
+
+      </div>
+
+
+      <!-- URL-fält -->
+      <div class="input-group">
+
+        <label for="url">
+          Website URL
+        </label>
+
+        <div class="url-input-wrapper">
+
+          <!-- Liten ikon framför URL-fältet -->
+          <span class="input-icon">
+            🌐
+          </span>
+
+          <input
+            id="url"
+            type="url"
+            placeholder="example.se"
+            autocomplete="url"
+          >
+
+        </div>
+
+      </div>
+
+
+      <!-- Startknapp -->
+      <button
+        id="scanButton"
+        class="primary-button"
+        type="button"
+      >
+
+        <span>
+          Start QA Analysis
+        </span>
+
+        <span class="button-arrow">
+          →
+        </span>
+
+      </button>
+
+    </section>
+
+
+    <!-- ================================= -->
+    <!-- CSV SCAN -->
+    <!-- ================================= -->
+
+    <section class="card csv-card">
+
+      <!-- Rubrik -->
+      <div class="section-header">
+
+        <div>
+
+          <span class="section-label">
+            BULK TESTING
+          </span>
+
+          <h2>
+            Analyze multiple websites
+          </h2>
+
+          <p>
+            Upload a CSV file containing multiple website URLs.
+          </p>
+
+        </div>
+
+      </div>
+
+
+      <!-- CSV-uppladdning -->
+      <label
+        for="csvFile"
+        class="csv-dropzone"
+        id="csvDropzone"
+      >
+
+        <!-- Ikon -->
+        <div class="upload-icon">
+          ↑
+        </div>
+
+        <!-- Text -->
+        <strong>
+          Upload CSV file
+        </strong>
+
+        <span>
+          Click to browse or drop your file here
+        </span>
+
+        <small>
+          Supports CSV files
+        </small>
+
+      </label>
+
+
+      <!-- Den riktiga filväljaren -->
+      <input
+        id="csvFile"
+        class="hidden-file-input"
+        type="file"
+        accept=".csv"
+      >
+
+
+      <!-- Vald fil visas här -->
+      <div
+        id="selectedFile"
+        class="selected-file"
+        hidden
+      >
+
+        <span class="file-icon">
+          CSV
+        </span>
+
+        <span
+          id="selectedFileName"
+          class="file-name"
+        ></span>
+
+      </div>
+
+
+      <!-- CSV-knapp -->
+      <button
+        id="csvScanButton"
+        class="secondary-button"
+        type="button"
+      >
+
+        <span>
+          Start CSV QA
+        </span>
+
+        <span>
+          →
+        </span>
+
+      </button>
+
+    </section>
+
+
+    <!-- ================================= -->
+    <!-- PROGRESS -->
+    <!-- ================================= -->
+
+    <section
       id="progressContainer"
-      class="progress-container"
+      class="progress-card"
       hidden
     >
 
-      <!-- Rad som visar status och procent -->
+      <!-- Statusrad -->
       <div class="progress-info">
 
-        <!-- Statusmeddelande -->
-        <span id="progressStatus">
-          QA-skanning pågår...
-        </span>
+        <div>
+
+          <span class="section-label">
+            ANALYSIS
+          </span>
+
+          <strong id="progressStatus">
+            QA-skanning pågår...
+          </strong>
+
+        </div>
 
         <!-- Procent -->
         <span id="progressPercent">
@@ -99,10 +261,10 @@
 
       </div>
 
-      <!-- Bakgrund till progressbaren -->
+
+      <!-- Progressbar -->
       <div class="progress-bar">
 
-        <!-- Själva progressen -->
         <div
           id="progressFill"
           class="progress-fill"
@@ -110,51 +272,109 @@
 
       </div>
 
-    </div>
+    </section>
 
 
-    <!-- Område för statusmeddelanden -->
+    <!-- ================================= -->
+    <!-- STATUS -->
+    <!-- ================================= -->
+
     <div
       id="status"
       class="status"
     ></div>
 
 
-    <!-- Område där QA-resultatet visas -->
-    <div
+    <!-- ================================= -->
+    <!-- RESULTAT -->
+    <!-- ================================= -->
+
+    <section
       id="results"
       class="results"
-    ></div>
+    ></section>
 
 
-    <!-- ========================= -->
-<!-- PDF-FUNKTIONER -->
-<!-- ========================= -->
+    <!-- ================================= -->
+    <!-- PDF -->
+    <!-- ================================= -->
 
-<!-- Knapp för att öppna PDF-rapporten -->
-<button
-  id="pdfButton"
-  class="pdf-button"
-  type="button"
-  hidden
->
-  Öppna PDF-rapport
-</button>
+    <section
+      class="pdf-section"
+      id="pdfSection"
+      hidden
+    >
 
-<!-- Knapp för att ladda ner PDF-rapporten -->
-<button
-  id="downloadPdfButton"
-  class="pdf-button"
-  type="button"
-  hidden
->
-  Ladda ner PDF-rapport
-</button>
+      <div class="pdf-info">
 
+        <div class="pdf-icon">
+          PDF
+        </div>
+
+        <div>
+
+          <strong>
+            QA Report
+          </strong>
+
+          <span>
+            Your analysis report is ready.
+          </span>
+
+        </div>
+
+      </div>
+
+
+      <div class="pdf-actions">
+
+        <!-- Öppnar PDF-rapporten -->
+        <button
+          id="pdfButton"
+          class="pdf-button"
+          type="button"
+          hidden
+        >
+          Open Report
+        </button>
+
+        <!-- Laddar ner PDF-rapporten -->
+        <button
+          id="downloadPdfButton"
+          class="pdf-button secondary"
+          type="button"
+          hidden
+        >
+          Download
+        </button>
+
+      </div>
+
+    </section>
+
+
+    <!-- ================================= -->
+    <!-- FOOTER -->
+    <!-- ================================= -->
+
+    <footer class="footer">
+
+      <span>
+        Website QA System
+      </span>
+
+      <span>
+        Automated • Reliable • Local AI
+      </span>
+
+    </footer>
+
+  </main>
 
 
   <!-- Kopplar popupens JavaScript -->
   <script src="src/popup.js"></script>
 
 </body>
+
 </html>

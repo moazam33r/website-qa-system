@@ -1,153 +1,1297 @@
-/* Grundinställningar för popupen */
+/* ========================================= */
+/* GRUNDINSTÄLLNINGAR */
+/* ========================================= */
+
+/* Gör så att padding och border räknas in i elementets storlek */
+* {
+  box-sizing: border-box;
+}
+
+
+/* Grundinställningar för hela sidan */
 body {
-  width: 360px;
+
+  /* Popupens bredd */
+  width: 430px;
+
+  /* Tar bort webbläsarens standardmarginal */
   margin: 0;
-  padding: 20px;
-  font-family: Arial, sans-serif;
+
+  /* Bakgrundsfärg */
+  background: #f5f7fb;
+
+  /* Standardtext */
+  color: #172033;
+
+  /* Modern systemfont */
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif;
+
+  /* Gör texten mjukare */
+  -webkit-font-smoothing: antialiased;
+
 }
 
 
 /* Huvudcontainer */
 .container {
+
+  /* Avstånd runt hela applikationen */
+  padding: 22px;
+
+  /* Använd flex-layout */
   display: flex;
+
+  /* Lägg elementen under varandra */
   flex-direction: column;
-  gap: 10px;
+
+  /* Avstånd mellan sektionerna */
+  gap: 16px;
+
+}
+
+
+/* ========================================= */
+/* HEADER */
+/* ========================================= */
+
+.header {
+
+  /* Lägg innehållet bredvid varandra */
+  display: flex;
+
+  /* Placera innehållet längst ut */
+  justify-content: space-between;
+
+  /* Centrera vertikalt */
+  align-items: center;
+
+  /* Lite utrymme under headern */
+  margin-bottom: 2px;
+
+}
+
+
+/* Branding */
+.brand {
+
+  /* Lägg ikon och text bredvid varandra */
+  display: flex;
+
+  /* Centrera vertikalt */
+  align-items: center;
+
+  /* Avstånd mellan ikon och text */
+  gap: 11px;
+
+}
+
+
+/* QA-ikon */
+.brand-icon {
+
+  /* Storlek */
+  width: 42px;
+  height: 42px;
+
+  /* Rundade hörn */
+  border-radius: 12px;
+
+  /* Bakgrund */
+  background: linear-gradient(
+    135deg,
+    #2563eb,
+    #4f46e5
+  );
+
+  /* Vit symbol */
+  color: white;
+
+  /* Centrera symbolen */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  /* Storlek på symbolen */
+  font-size: 21px;
+
+  /* Fet */
+  font-weight: 700;
+
+  /* Skugga */
+  box-shadow:
+    0 6px 14px rgba(37, 99, 235, 0.25);
+
 }
 
 
 /* Huvudrubrik */
 h1 {
+
+  /* Tar bort standardmarginal */
   margin: 0;
+
+  /* Storlek */
+  font-size: 19px;
+
+  /* Fet */
+  font-weight: 700;
+
+  /* Bokstavsavstånd */
+  letter-spacing: -0.3px;
+
+}
+
+
+/* Beskrivningen under rubriken */
+.description {
+
+  /* Tar bort standardmarginal */
+  margin: 3px 0 0;
+
+  /* Storlek */
+  font-size: 11px;
+
+  /* Färg */
+  color: #7a8497;
+
+}
+
+
+/* Systemstatus */
+.system-status {
+
+  /* Lägg dot och text bredvid varandra */
+  display: flex;
+
+  align-items: center;
+
+  gap: 6px;
+
+  /* Storlek */
+  font-size: 11px;
+
+  /* Fet */
+  font-weight: 600;
+
+  /* Färg */
+  color: #16a34a;
+
+  /* Bakgrund */
+  background: #ecfdf3;
+
+  /* Padding */
+  padding: 6px 9px;
+
+  /* Rundade hörn */
+  border-radius: 999px;
+
+}
+
+
+/* Grön statuspunkt */
+.status-dot {
+
+  /* Storlek */
+  width: 7px;
+  height: 7px;
+
+  /* Gör punkten rund */
+  border-radius: 50%;
+
+  /* Färg */
+  background: #22c55e;
+
+  /* Lite animation */
+  box-shadow:
+    0 0 0 3px rgba(34, 197, 94, 0.12);
+
+}
+
+
+/* ========================================= */
+/* KORT */
+/* ========================================= */
+
+.card {
+
+  /* Vit bakgrund */
+  background: white;
+
+  /* Border */
+  border: 1px solid #e5e9f2;
+
+  /* Rundade hörn */
+  border-radius: 16px;
+
+  /* Inre avstånd */
+  padding: 18px;
+
+  /* Subtil skugga */
+  box-shadow:
+    0 4px 14px rgba(15, 23, 42, 0.04);
+
+}
+
+
+/* ========================================= */
+/* SEKTIONSRUBRIKER */
+/* ========================================= */
+
+.section-header {
+
+  /* Gör det möjligt att placera saker bredvid */
+  display: flex;
+
+  justify-content: space-between;
+
+  margin-bottom: 16px;
+
+}
+
+
+/* Liten kategoritext */
+.section-label {
+
+  /* Gör texten till ett block */
+  display: block;
+
+  /* Storlek */
+  font-size: 9px;
+
+  /* Fet */
+  font-weight: 700;
+
+  /* Bokstavsavstånd */
+  letter-spacing: 1px;
+
+  /* Färg */
+  color: #2563eb;
+
+  /* Avstånd */
+  margin-bottom: 4px;
+
 }
 
 
 /* Sekundär rubrik */
 h2 {
-  margin-top: 15px;
-  margin-bottom: 0;
+
+  /* Tar bort standardmarginal */
+  margin: 0;
+
+  /* Storlek */
+  font-size: 16px;
+
+  /* Fet */
+  font-weight: 700;
+
+  /* Färg */
+  color: #172033;
+
 }
 
 
-/* Beskrivning */
-.description {
-  margin-top: 0;
+/* Text under rubrik */
+.section-header p {
+
+  /* Marginal */
+  margin: 5px 0 0;
+
+  /* Storlek */
+  font-size: 11px;
+
+  /* Färg */
+  color: #7a8497;
+
+  /* Radavstånd */
+  line-height: 1.5;
+
 }
 
 
-/* CSV-beskrivning */
-.csv-description {
-  margin-top: 0;
-  font-size: 13px;
+/* ========================================= */
+/* URL INPUT */
+/* ========================================= */
+
+.input-group {
+
+  /* Avstånd under */
+  margin-bottom: 12px;
+
+}
+
+
+/* Label */
+.input-group label {
+
+  /* Block */
+  display: block;
+
+  /* Storlek */
+  font-size: 11px;
+
+  /* Fet */
+  font-weight: 600;
+
+  /* Färg */
+  color: #4b5565;
+
+  /* Avstånd */
+  margin-bottom: 6px;
+
+}
+
+
+/* Wrapper runt URL-input */
+.url-input-wrapper {
+
+  /* Gör det möjligt att placera ikonen inuti */
+  position: relative;
+
+}
+
+
+/* Ikon i input */
+.input-icon {
+
+  /* Placering */
+  position: absolute;
+
+  left: 12px;
+
+  top: 50%;
+
+  /* Centrera vertikalt */
+  transform: translateY(-50%);
+
+  /* Storlek */
+  font-size: 14px;
+
+  /* Hindra musinteraktion */
+  pointer-events: none;
+
 }
 
 
 /* URL-fält */
-input {
-  padding: 10px;
-  font-size: 14px;
-  box-sizing: border-box;
+#url {
+
+  /* Full bredd */
   width: 100%;
-}
 
+  /* Höjd */
+  height: 43px;
 
-/* Filväljaren */
-input[type="file"] {
-  padding: 5px;
-}
+  /* Padding */
+  padding: 0 13px 0 38px;
 
+  /* Border */
+  border: 1px solid #dce2ec;
 
-/* Knappar */
-button {
-  padding: 10px;
-  font-size: 14px;
-  cursor: pointer;
-}
+  /* Rundade hörn */
+  border-radius: 10px;
 
+  /* Bakgrund */
+  background: #fafbfc;
 
-/* Inaktiverad knapp */
-button:disabled {
-  cursor: not-allowed;
-}
-
-
-/* Progresscontainer */
-.progress-container {
-  margin-top: 10px;
-}
-
-
-/* Rad med status och procent */
-.progress-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
+  /* Text */
   font-size: 13px;
+
+  /* Ta bort standard outline */
+  outline: none;
+
+  /* Mjuk transition */
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+
 }
 
 
-/* Bakgrunden till progressbaren */
-.progress-bar {
+/* Input när användaren klickar */
+#url:focus {
+
+  /* Blå border */
+  border-color: #2563eb;
+
+  /* Vitare bakgrund */
+  background: white;
+
+  /* Blå fokus-effekt */
+  box-shadow:
+    0 0 0 3px rgba(37, 99, 235, 0.10);
+
+}
+
+
+/* Placeholder */
+#url::placeholder {
+
+  /* Ljusare färg */
+  color: #a0a8b7;
+
+}
+
+
+/* ========================================= */
+/* KNAPPAR */
+/* ========================================= */
+
+button {
+
+  /* Ärver font från body */
+  font-family: inherit;
+
+  /* Ta bort standardborder */
+  border: none;
+
+  /* Muspekare */
+  cursor: pointer;
+
+}
+
+
+/* Huvudknappen */
+.primary-button {
+
+  /* Full bredd */
   width: 100%;
-  height: 8px;
-  overflow: hidden;
+
+  /* Höjd */
+  min-height: 44px;
+
+  /* Layout */
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  /* Padding */
+  padding: 0 15px;
+
+  /* Bakgrund */
+  background: linear-gradient(
+    135deg,
+    #2563eb,
+    #4f46e5
+  );
+
+  /* Text */
+  color: white;
+
+  /* Fet */
+  font-size: 13px;
+
+  font-weight: 700;
+
+  /* Rundade hörn */
+  border-radius: 10px;
+
+  /* Skugga */
+  box-shadow:
+    0 5px 12px rgba(37, 99, 235, 0.20);
+
+  /* Animation */
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
+
+}
+
+
+/* Hover på huvudknappen */
+.primary-button:hover {
+
+  /* Lite högre */
+  transform: translateY(-1px);
+
+  /* Starkare skugga */
+  box-shadow:
+    0 7px 16px rgba(37, 99, 235, 0.28);
+
+}
+
+
+/* När knappen trycks */
+.primary-button:active {
+
+  /* Gå tillbaka */
+  transform: translateY(0);
+
+}
+
+
+/* Pil */
+.button-arrow {
+
+  /* Storlek */
+  font-size: 18px;
+
+  /* Animation */
+  transition: transform 0.2s ease;
+
+}
+
+
+/* Flytta pilen vid hover */
+.primary-button:hover .button-arrow {
+
+  transform: translateX(3px);
+
+}
+
+
+/* Sekundär knapp */
+.secondary-button {
+
+  /* Full bredd */
+  width: 100%;
+
+  /* Höjd */
+  min-height: 42px;
+
+  /* Bakgrund */
+  background: #f3f6fb;
+
+  /* Text */
+  color: #2563eb;
+
+  /* Border */
+  border: 1px solid #dbe4f2;
+
+  /* Rundade hörn */
+  border-radius: 10px;
+
+  /* Fet */
+  font-size: 12px;
+
+  font-weight: 700;
+
+  /* Layout */
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  /* Padding */
+  padding: 0 14px;
+
+  /* Animation */
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+
+}
+
+
+/* Hover */
+.secondary-button:hover {
+
+  /* Ljusblå bakgrund */
+  background: #edf3ff;
+
+  /* Blåare border */
+  border-color: #c7d7f5;
+
+}
+
+
+/* Disabled-knapp */
+button:disabled {
+
+  /* Visa att knappen inte kan användas */
+  cursor: not-allowed;
+
+  /* Gör knappen svagare */
+  opacity: 0.55;
+
+  /* Ta bort hover-effekt */
+  transform: none;
+
+}
+
+
+/* ========================================= */
+/* CSV */
+/* ========================================= */
+
+.csv-card {
+
+  /* Lite annan bakgrundston */
+  background: #fbfcfe;
+
+}
+
+
+/* Drag-and-drop område */
+.csv-dropzone {
+
+  /* Block */
+  display: flex;
+
+  /* Vertikal layout */
+  flex-direction: column;
+
+  /* Centrera */
+  align-items: center;
+
+  justify-content: center;
+
+  /* Höjd */
+  min-height: 135px;
+
+  /* Border */
+  border: 1.5px dashed #cbd5e1;
+
+  /* Rundade hörn */
+  border-radius: 12px;
+
+  /* Bakgrund */
+  background: #ffffff;
+
+  /* Muspekare */
+  cursor: pointer;
+
+  /* Padding */
+  padding: 18px;
+
+  /* Textcentrering */
+  text-align: center;
+
+  /* Animation */
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+
+}
+
+
+/* Hover på dropzone */
+.csv-dropzone:hover {
+
+  /* Blå border */
+  border-color: #2563eb;
+
+  /* Svagt blå bakgrund */
+  background: #f8faff;
+
+}
+
+
+/* Uppladdningsikon */
+.upload-icon {
+
+  /* Storlek */
+  width: 34px;
+  height: 34px;
+
+  /* Rund */
+  border-radius: 10px;
+
+  /* Bakgrund */
+  background: #edf3ff;
+
+  /* Färg */
+  color: #2563eb;
+
+  /* Centrera */
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  /* Storlek */
+  font-size: 18px;
+
+  /* Avstånd */
+  margin-bottom: 9px;
+
+}
+
+
+/* Huvudtext */
+.csv-dropzone strong {
+
+  /* Storlek */
+  font-size: 12px;
+
+  /* Färg */
+  color: #273449;
+
+}
+
+
+/* Hjälptext */
+.csv-dropzone span {
+
+  /* Storlek */
+  font-size: 10px;
+
+  /* Färg */
+  color: #7a8497;
+
+  /* Avstånd */
+  margin-top: 4px;
+
+}
+
+
+/* Filformat */
+.csv-dropzone small {
+
+  /* Storlek */
+  font-size: 9px;
+
+  /* Färg */
+  color: #a0a8b7;
+
+  /* Avstånd */
+  margin-top: 5px;
+
+}
+
+
+/* Dölj den vanliga filväljaren */
+.hidden-file-input {
+
+  /* Dölj filfältet */
+  display: none;
+
+}
+
+
+/* Vald CSV-fil */
+.selected-file {
+
+  /* Layout */
+  display: flex;
+
+  align-items: center;
+
+  gap: 9px;
+
+  /* Marginal */
+  margin-top: 10px;
+
+  /* Padding */
+  padding: 9px 10px;
+
+  /* Bakgrund */
+  background: #f1f5f9;
+
+  /* Border */
+  border: 1px solid #e2e8f0;
+
+  /* Rundade hörn */
+  border-radius: 9px;
+
+}
+
+
+/* CSV-ikon */
+.file-icon {
+
+  /* Liten ruta */
+  padding: 4px 6px;
+
+  /* Bakgrund */
+  background: #dcfce7;
+
+  /* Text */
+  color: #15803d;
+
+  /* Fet */
+  font-size: 8px;
+
+  font-weight: 800;
+
+  /* Rundade hörn */
   border-radius: 4px;
+
+}
+
+
+/* Filnamn */
+.file-name {
+
+  /* Begränsa bredd */
+  overflow: hidden;
+
+  /* Visa ... */
+  text-overflow: ellipsis;
+
+  /* Ingen radbrytning */
+  white-space: nowrap;
+
+  /* Storlek */
+  font-size: 10px;
+
+  /* Färg */
+  color: #475569;
+
+}
+
+
+/* CSV-knappen */
+.csv-card .secondary-button {
+
+  /* Avstånd */
+  margin-top: 10px;
+
+}
+
+
+/* ========================================= */
+/* PROGRESS */
+/* ========================================= */
+
+.progress-card {
+
+  /* Vit bakgrund */
+  background: white;
+
+  /* Border */
+  border: 1px solid #e5e9f2;
+
+  /* Rundade hörn */
+  border-radius: 14px;
+
+  /* Padding */
+  padding: 15px;
+
+  /* Skugga */
+  box-shadow:
+    0 4px 14px rgba(15, 23, 42, 0.04);
+
+}
+
+
+/* Progressinformationen */
+.progress-info {
+
+  /* Layout */
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  /* Avstånd */
+  margin-bottom: 10px;
+
+}
+
+
+/* Progressstatus */
+#progressStatus {
+
+  /* Block */
+  display: block;
+
+  /* Storlek */
+  font-size: 11px;
+
+  /* Färg */
+  color: #475569;
+
+}
+
+
+/* Procent */
+#progressPercent {
+
+  /* Storlek */
+  font-size: 13px;
+
+  /* Fet */
+  font-weight: 700;
+
+  /* Färg */
+  color: #2563eb;
+
+}
+
+
+/* Progressbarens bakgrund */
+.progress-bar {
+
+  /* Full bredd */
+  width: 100%;
+
+  /* Höjd */
+  height: 7px;
+
+  /* Bakgrund */
+  background: #e9eef6;
+
+  /* Rund */
+  border-radius: 999px;
+
+  /* Dölj innehåll utanför */
+  overflow: hidden;
+
 }
 
 
 /* Själva progressen */
 .progress-fill {
+
+  /* Startbredd */
   width: 0%;
+
+  /* Full höjd */
   height: 100%;
-  border-radius: 4px;
 
-  /* Gör progressen mjuk */
+  /* Blå gradient */
+  background: linear-gradient(
+    90deg,
+    #2563eb,
+    #6366f1
+  );
+
+  /* Rundade hörn */
+  border-radius: 999px;
+
+  /* Mjuk animation */
   transition: width 0.3s ease;
+
 }
 
 
-/* Statusområde */
+/* ========================================= */
+/* STATUS */
+/* ========================================= */
+
 .status {
-  margin-top: 10px;
+
+  /* Minsta höjd så layouten inte hoppar */
+  min-height: 0;
+
+  /* Storlek */
+  font-size: 11px;
+
+  /* Radavstånd */
+  line-height: 1.5;
+
 }
 
 
-/* Resultatområde */
+/* ========================================= */
+/* RESULTAT */
+/* ========================================= */
+
 .results {
-  margin-top: 10px;
+
+  /* Layout */
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 10px;
+
 }
 
 
-/* Resultat för varje CSV-webbplats */
+/* CSV-resultat */
 .csv-result {
-  margin-top: 10px;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+
+  /* Vit bakgrund */
+  background: white;
+
+  /* Border */
+  border: 1px solid #e5e9f2;
+
+  /* Rundade hörn */
+  border-radius: 12px;
+
+  /* Padding */
+  padding: 12px;
+
+  /* Skugga */
+  box-shadow:
+    0 3px 10px rgba(15, 23, 42, 0.03);
+
 }
 
 
-/* PDF-länk från CSV-resultat */
+/* PDF-länk */
 .csv-pdf-link {
+
+  /* Inline-block */
   display: inline-block;
-  margin-top: 5px;
+
+  /* Avstånd */
+  margin-top: 7px;
+
+  /* Färg */
+  color: #2563eb;
+
+  /* Ta bort underline */
   text-decoration: none;
+
+  /* Fet */
+  font-weight: 600;
+
+  /* Storlek */
+  font-size: 10px;
+
 }
 
 
-/* PDF-knappen */
-.pdf-button {
+/* Hover på PDF-länk */
+.csv-pdf-link:hover {
+
+  /* Visa underline */
+  text-decoration: underline;
+
+}
+
+
+/* ========================================= */
+/* PDF SECTION */
+/* ========================================= */
+
+.pdf-section {
+
+  /* Vit bakgrund */
+  background: white;
+
+  /* Border */
+  border: 1px solid #e5e9f2;
+
+  /* Rundade hörn */
+  border-radius: 14px;
+
+  /* Padding */
+  padding: 14px;
+
+  /* Layout */
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 12px;
+
+}
+
+
+/* PDF-information */
+.pdf-info {
+
+  /* Lägg ikon och text bredvid varandra */
+  display: flex;
+
+  align-items: center;
+
+  gap: 10px;
+
+}
+
+
+/* PDF-ikon */
+.pdf-icon {
+
+  /* Storlek */
+  width: 38px;
+  height: 38px;
+
+  /* Rundade hörn */
+  border-radius: 9px;
+
+  /* Bakgrund */
+  background: #fff1f2;
+
+  /* Färg */
+  color: #e11d48;
+
+  /* Centrera */
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  /* Storlek */
+  font-size: 9px;
+
+  /* Fet */
+  font-weight: 800;
+
+}
+
+
+/* PDF-rubrik */
+.pdf-info strong {
+
+  /* Block */
   display: block;
-  padding: 10px;
-  margin-top: 10px;
-  text-align: center;
-  text-decoration: none;
-  font-size: 14px;
-  cursor: pointer;
+
+  /* Storlek */
+  font-size: 12px;
+
 }
 
 
-/* Döljer element med hidden-attribut */
+/* PDF-beskrivning */
+.pdf-info span {
+
+  /* Block */
+  display: block;
+
+  /* Storlek */
+  font-size: 10px;
+
+  /* Färg */
+  color: #7a8497;
+
+  /* Avstånd */
+  margin-top: 2px;
+
+}
+
+
+/* PDF-knappar */
+.pdf-actions {
+
+  /* Layout */
+  display: flex;
+
+  gap: 8px;
+
+}
+
+
+/* PDF-knapp */
+.pdf-button {
+
+  /* Tar upp tillgängligt utrymme */
+  flex: 1;
+
+  /* Höjd */
+  min-height: 38px;
+
+  /* Bakgrund */
+  background: #2563eb;
+
+  /* Text */
+  color: white;
+
+  /* Rundade hörn */
+  border-radius: 9px;
+
+  /* Fet */
+  font-size: 10px;
+
+  font-weight: 700;
+
+  /* Animation */
+  transition:
+    background 0.2s ease,
+    transform 0.15s ease;
+
+}
+
+
+/* PDF hover */
+.pdf-button:hover {
+
+  /* Mörkare blå */
+  background: #1d4ed8;
+
+  /* Liten rörelse */
+  transform: translateY(-1px);
+
+}
+
+
+/* Sekundär PDF-knapp */
+.pdf-button.secondary {
+
+  /* Ljus bakgrund */
+  background: #f1f5f9;
+
+  /* Text */
+  color: #334155;
+
+  /* Border */
+  border: 1px solid #e2e8f0;
+
+}
+
+
+/* Hover på sekundär PDF */
+.pdf-button.secondary:hover {
+
+  /* Lite mörkare */
+  background: #e8edf4;
+
+}
+
+
+/* ========================================= */
+/* FOOTER */
+/* ========================================= */
+
+.footer {
+
+  /* Layout */
+  display: flex;
+
+  justify-content: space-between;
+
+  /* Storlek */
+  font-size: 8px;
+
+  /* Färg */
+  color: #9aa3b2;
+
+  /* Avstånd */
+  padding: 2px 2px 0;
+
+}
+
+
+/* ========================================= */
+/* HIDDEN */
+/* ========================================= */
+
+/* Döljer element som har hidden-attributet */
 [hidden] {
-  display: none;
+
+  display: none !important;
+
+}
+/* ========================================= */
+/* DRAG & DROP AKTIVT LÄGE */
+/* ========================================= */
+
+/* Visar tydligt när en fil dras över CSV-rutan */
+.csv-dropzone.drag-active {
+
+  /* Blå border */
+  border-color: #2563eb;
+
+  /* Ljusblå bakgrund */
+  background: #eff6ff;
+
+  /* Gör rutan lite större */
+  transform: scale(1.01);
+
+  /* Blå skugga */
+  box-shadow:
+    0 0 0 3px rgba(37, 99, 235, 0.08);
+
 }

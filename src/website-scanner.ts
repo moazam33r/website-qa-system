@@ -1,6 +1,6 @@
 import { Page } from "@playwright/test";
 import { checkCTA } from "./checks/cta";
-import { checkPages } from "./checks/pages";
+import { checkPages, PageProgress } from "./checks/pages";
 import { checkLinks } from "./checks/links";
 import { checkSocialMedia } from "./checks/social-media";
 import { checkImages } from "./checks/images";
@@ -24,16 +24,27 @@ import {
   QACheckResult,
 } from "./report/qa-report";
 
-// Startar en komplett QA-skanning av webbplatsen
+// =========================================================
+// PROGRESS-TYP
+// =========================================================
+
 // Callback som används för att skicka aktuell progress
 // tillbaka till servern och sedan vidare till popupen.
+export type ScanProgressCallback = (
+  percentage: number,
+  message: string
+) => void;
+
+
+// =========================================================
+// WEBSITE QA SYSTEM
+// =========================================================
+
+// Startar en komplett QA-skanning av webbplatsen.
 export async function scanWebsite(
   page: Page,
   url: string,
-  onProgress?: (
-    percentage: number,
-    message: string
-  ) => void
+  onProgress?: ScanProgressCallback
 ) {
 
   console.log("\n=================================");
@@ -41,21 +52,124 @@ export async function scanWebsite(
   console.log("=================================");
   console.log(`\nStartar skanning av: ${url}`);
 
-  // Här sparar vi resultaten från alla kontroller
+
+  // =======================================================
+  // RESULTAT
+  // =======================================================
+
+  // Här sparar vi resultaten från alla kontroller.
   const results: QACheckResult[] = [];
 
-  // 1. Kontrollerar webbplatsens sidor
-  console.log("\n--- SIDOR ---");
 
-  const pageResult = await checkPages(
-    page,
-    url
+  // =======================================================
+  // PROGRESS
+  // =======================================================
+
+  // Sparar senast skickade procent.
+  //
+  // Detta är viktigt eftersom crawlern kan upptäcka nya
+  // sidor under tiden. Vi vill aldrig att progressbaren
+  // går bakåt från exempelvis 20 % till 15 %.
+  let lastProgress = 0;
+
+  // Skickar progress till servern.
+  const reportProgress = (
+    percentage: number,
+    message: string
+  ) => {
+
+    // Säkerställer att värdet alltid ligger mellan 0 och 100.
+    const safePercentage = Math.max(
+      0,
+      Math.min(100, Math.round(percentage))
+    );
+
+    // Progress får aldrig gå bakåt.
+    const finalPercentage = Math.max(
+      lastProgress,
+      safePercentage
+    );
+
+    // Sparar senaste värdet.
+    lastProgress = finalPercentage;
+
+    // Skickar progress till servern.
+    onProgress?.(
+      finalPercentage,
+      message
+    );
+  };
+
+
+  // =======================================================
+  // START
+  // =======================================================
+
+  reportProgress(
+    0,
+    "Förbereder QA-skanning..."
   );
 
-  // Hämtar sidorna som hittades
+
+  // =======================================================
+  // 1. SIDOR / CRAWLING
+  // =======================================================
+
+  console.log("\n--- SIDOR ---");
+
+  // Crawlern skickar information varje gång en sida
+  // har analyserats.
+  //
+  // Vi använder inte en timer här.
+  // Progressen kommer direkt från det faktiska arbetet
+  // som crawlern utför.
+  const pageResult = await checkPages(
+    page,
+    url,
+    (progress: PageProgress) => {
+
+      // Om inga sidor har upptäckts ännu visar vi 0 %.
+      if (progress.current === 0) {
+
+        reportProgress(
+          0,
+          progress.message
+        );
+
+        return;
+      }
+
+      // Antalet upptäckta sidor används som aktuell
+      // arbetsmängd för crawlern.
+      const discovered = Math.max(
+        progress.discovered,
+        progress.current,
+        1
+      );
+
+      // Crawlern använder första delen av den totala
+      // progressen.
+      //
+      // Eftersom nya sidor kan upptäckas under crawling
+      // låter vi aldrig värdet gå bakåt.
+      const crawlerPercentage =
+        Math.round(
+          (progress.current / discovered) * 30
+        );
+
+      reportProgress(
+        crawlerPercentage,
+        progress.message
+      );
+    }
+  );
+
+
+  // Hämtar sidorna som hittades.
   const pages = pageResult.links;
 
-  // Kontrollerar resultatet för sidorna
+
+  // Kontrollerar resultatet för sidorna.
   if (
     pageResult.status >= 200 &&
     pageResult.status < 400 &&
@@ -79,59 +193,85 @@ export async function scanWebsite(
     });
   }
 
-  // 2. Kontrollerar SEO
-console.log("\n--- SEO ---");
 
-const seoResult = await checkSEO(
-  page,
-  pages
-);
+  // Crawlingen är nu faktiskt färdig.
+  reportProgress(
+    30,
+    `${pageResult.pages.length} sidor hittades. Fortsätter QA-analysen...`
+  );
 
-if (seoResult.failed.length > 0) {
 
-  // Tar med både antal och detaljerade SEO-fel.
-  const seoDetails =
-    seoResult.failed
-      .map((error) => `- ${error}`)
-      .join("\n");
+  // =======================================================
+  // 2. SEO
+  // =======================================================
 
-  results.push({
-    name: "SEO",
-    status: "FAIL",
-    message:
-      `${seoResult.failed.length} tekniska SEO-fel hittades\n` +
-      seoDetails,
-  });
+  console.log("\n--- SEO ---");
 
-} else if (seoResult.warnings.length > 0) {
+  reportProgress(
+    32,
+    "Analyserar SEO..."
+  );
 
-  // Tar med både antal och detaljerade SEO-varningar.
-  // Detta gör att AI:n kan se exakt vilka sidor som har problem.
-  const seoDetails =
-    seoResult.warnings
-      .map((warning) => `- ${warning}`)
-      .join("\n");
+  const seoResult = await checkSEO(
+    page,
+    pages
+  );
 
-  results.push({
-    name: "SEO",
-    status: "WARNING",
-    message:
-      `${seoResult.warnings.length} SEO-varningar hittades\n` +
-      seoDetails,
-  });
+  if (seoResult.failed.length > 0) {
 
-} else {
+    // Tar med både antal och detaljerade SEO-fel.
+    const seoDetails =
+      seoResult.failed
+        .map((error) => `- ${error}`)
+        .join("\n");
 
-  // Om inga problem finns visas det vanliga PASS-resultatet.
-  results.push({
-    name: "SEO",
-    status: "PASS",
-    message:
-      `${seoResult.passed.length} SEO-kontroller godkända`,
-  });
-}
+    results.push({
+      name: "SEO",
+      status: "FAIL",
+      message:
+        `${seoResult.failed.length} tekniska SEO-fel hittades\n` +
+        seoDetails,
+    });
 
-  // 3. Kontrollerar webbplatsens prestanda
+  } else if (seoResult.warnings.length > 0) {
+
+    // Tar med både antal och detaljerade SEO-varningar.
+    // Detta gör att AI:n kan se exakt vilka sidor som har problem.
+    const seoDetails =
+      seoResult.warnings
+        .map((warning) => `- ${warning}`)
+        .join("\n");
+
+    results.push({
+      name: "SEO",
+      status: "WARNING",
+      message:
+        `${seoResult.warnings.length} SEO-varningar hittades\n` +
+        seoDetails,
+    });
+
+  } else {
+
+    // Om inga problem finns visas det vanliga PASS-resultatet.
+    results.push({
+      name: "SEO",
+      status: "PASS",
+      message:
+        `${seoResult.passed.length} SEO-kontroller godkända`,
+    });
+  }
+
+
+  // =======================================================
+  // 3. PRESTANDA
+  // =======================================================
+
+  reportProgress(
+    35,
+    "Analyserar webbplatsens prestanda..."
+  );
+
+  // Kontrollerar webbplatsens prestanda.
   const performanceResult =
     await checkPerformance(url);
 
@@ -155,7 +295,16 @@ if (seoResult.failed.length > 0) {
     });
   }
 
-  // 4. Kontrollerar mobil och responsivitet
+
+  // =======================================================
+  // 4. RESPONSIVITET
+  // =======================================================
+
+  reportProgress(
+    38,
+    "Kontrollerar mobil och responsivitet..."
+  );
+
   const responsiveResult =
     await checkResponsive(
       page,
@@ -181,7 +330,17 @@ if (seoResult.failed.length > 0) {
     });
   }
 
-  // 5. Kontrollerar Cookie / GDPR-sidor
+
+  // =======================================================
+  // 5. COOKIE / GDPR
+  // =======================================================
+
+  reportProgress(
+    41,
+    "Kontrollerar Cookie / GDPR..."
+  );
+
+  // Kontrollerar Cookie / GDPR-sidor.
   const cookieGdprResult =
     await checkCookieGdpr(
       page,
@@ -207,9 +366,15 @@ if (seoResult.failed.length > 0) {
     });
   }
 
-  // ==============================
-  // HTTPS / SECURITY
-  // ==============================
+
+  // =======================================================
+  // 6. HTTPS / SECURITY
+  // =======================================================
+
+  reportProgress(
+    44,
+    "Kontrollerar HTTPS och säkerhet..."
+  );
 
   const securityResult =
     await checkSecurity(url);
@@ -220,9 +385,15 @@ if (seoResult.failed.length > 0) {
     message: securityResult.message,
   });
 
-  // ==============================
-  // ALTERNATIVA DOMÄNER
-  // ==============================
+
+  // =======================================================
+  // 7. ALTERNATIVA DOMÄNER
+  // =======================================================
+
+  reportProgress(
+    47,
+    "Kontrollerar alternativa domäner..."
+  );
 
   const domainsResult =
     await checkDomains(url);
@@ -235,9 +406,15 @@ if (seoResult.failed.length > 0) {
       `${domainsResult.failed} fungerar inte`,
   });
 
-  // ==============================
-  // HÄMTAR FÖRETAGSNAMN
-  // ==============================
+
+  // =======================================================
+  // 8. HÄMTAR FÖRETAGSNAMN
+  // =======================================================
+
+  reportProgress(
+    49,
+    "Analyserar företagsinformation..."
+  );
 
   let companyName = "";
 
@@ -247,7 +424,7 @@ if (seoResult.failed.length > 0) {
       waitUntil: "domcontentloaded",
     });
 
-    // Hämtar JSON-LD-data från sidan
+    // Hämtar JSON-LD-data från sidan.
     const jsonLdScripts = await page
       .locator('script[type="application/ld+json"]')
       .allTextContents();
@@ -264,7 +441,7 @@ if (seoResult.failed.length > 0) {
 
         for (const object of objects) {
 
-          // Kontrollerar huvudobjektet
+          // Kontrollerar huvudobjektet.
           if (
             object &&
             typeof object === "object" &&
@@ -294,7 +471,7 @@ if (seoResult.failed.length > 0) {
             }
           }
 
-          // Kontrollerar även @graph
+          // Kontrollerar även @graph.
           if (
             object &&
             typeof object === "object" &&
@@ -347,13 +524,14 @@ if (seoResult.failed.length > 0) {
         }
 
       } catch {
-        // Ignorerar JSON-LD som inte går att läsa
+        // Ignorerar JSON-LD som inte går att läsa.
       }
     }
 
   } catch {
-    // Fortsätter med fallback nedan
+    // Fortsätter med fallback nedan.
   }
+
 
   // Om JSON-LD inte gav något företagsnamn
   // används sidtiteln som reservlösning.
@@ -374,9 +552,15 @@ if (seoResult.failed.length > 0) {
     }`
   );
 
-  // ==============================
-  // LIKNANDE DOMÄNER / FÖRETAGSNAMN
-  // ==============================
+
+  // =======================================================
+  // 9. LIKNANDE DOMÄNER / FÖRETAGSNAMN
+  // =======================================================
+
+  reportProgress(
+    51,
+    "Kontrollerar liknande domäner..."
+  );
 
   if (companyName) {
 
@@ -419,28 +603,47 @@ if (seoResult.failed.length > 0) {
     );
   }
 
-  // 5.5. Kontrollerar stavning och grammatik
+
+  // =======================================================
+  // 10. TEXT / STAVNING
+  // =======================================================
+
   console.log("\n--- TEXT / STAVNING ---");
+
+  reportProgress(
+    54,
+    "Kontrollerar text och stavning..."
+  );
 
   // Tar bort Google-recensioner från sidan innan texten kontrolleras.
   // Detta förhindrar att kundnamn och recensionstext räknas som stavfel.
   await page.evaluate(() => {
+
     const elements = Array.from(
       document.querySelectorAll("body *")
     );
 
     for (const element of elements) {
-      const text = element.textContent?.trim() || "";
+
+      const text =
+        element.textContent?.trim() || "";
 
       // Hittar början av Google-recensionswidgeten.
       if (
         text.includes("Publicerat på Google") &&
         text.length < 5000
       ) {
-        let parent = element.parentElement;
+
+        let parent =
+          element.parentElement;
 
         // Letar efter ett större element som innehåller hela widgeten.
-        for (let i = 0; i < 6 && parent; i++) {
+        for (
+          let i = 0;
+          i < 6 && parent;
+          i++
+        ) {
+
           const parentText =
             parent.textContent?.trim() || "";
 
@@ -448,11 +651,14 @@ if (seoResult.failed.length > 0) {
             parentText.includes("Publicerat på Google") &&
             parentText.length < 10000
           ) {
+
             parent.remove();
+
             break;
           }
 
-          parent = parent.parentElement;
+          parent =
+            parent.parentElement;
         }
       }
     }
@@ -476,8 +682,17 @@ if (seoResult.failed.length > 0) {
         : "Inga stavnings- eller grammatikfel hittades",
   });
 
-  // 6. Kontrollerar interna och externa länkar
+
+  // =======================================================
+  // 11. LÄNKAR
+  // =======================================================
+
   console.log("\n--- LÄNKAR ---");
+
+  reportProgress(
+    57,
+    "Kontrollerar interna och externa länkar..."
+  );
 
   const linkResult = await checkLinks(
     page,
@@ -514,8 +729,17 @@ if (seoResult.failed.length > 0) {
     });
   }
 
-  // 7. Kontrollerar bilder
+
+  // =======================================================
+  // 12. BILDER
+  // =======================================================
+
   console.log("\n--- BILDER ---");
+
+  reportProgress(
+    60,
+    "Kontrollerar bilder..."
+  );
 
   const imageResult = await checkImages(
     page,
@@ -541,8 +765,17 @@ if (seoResult.failed.length > 0) {
     });
   }
 
-  // 8. Kontrollerar formulär
+
+  // =======================================================
+  // 13. FORMULÄR
+  // =======================================================
+
   console.log("\n--- FORMULÄR ---");
+
+  reportProgress(
+    63,
+    "Kontrollerar formulär..."
+  );
 
   const formResult = await checkForms(
     page,
@@ -558,22 +791,41 @@ if (seoResult.failed.length > 0) {
       `${formResult.requiredCount} obligatoriska fält`,
   });
 
-  // 9. Kontrollerar formulärvalidering
+
+  // =======================================================
+  // 14. FORMULÄRVALIDERING
+  // =======================================================
+
   console.log("\n--- VALIDERING ---");
 
-  // Kontrollerar formulärvalidering och skickar progress vidare.
-const validationResult = await checkValidation(
-  page,
-  pages,
-  (percentage, message) => {
+  reportProgress(
+    65,
+    "Kontrollerar formulärvalidering..."
+  );
 
-    // Skickar progress till servern.
-    onProgress?.(
-      percentage,
-      message
-    );
-  }
-);
+  // Kontrollerar formulärvalidering och skickar progress vidare.
+  const validationResult = await checkValidation(
+    page,
+    pages,
+    (percentage, message) => {
+
+      // Validation skickar progress mellan 0 och 100.
+      //
+      // Vi mappar den till området 65–72 % av den
+      // övergripande QA-processen.
+      const mappedPercentage =
+        65 +
+        Math.round(
+          (percentage / 100) * 7
+        );
+
+      // Skickar den mappade progressen till servern.
+      reportProgress(
+        mappedPercentage,
+        message
+      );
+    }
+  );
 
   if (validationResult.emailFailed > 0) {
 
@@ -603,8 +855,17 @@ const validationResult = await checkValidation(
     });
   }
 
-  // 10. Kontrollerar navigation
+
+  // =======================================================
+  // 15. NAVIGATION
+  // =======================================================
+
   console.log("\n--- NAVIGATION ---");
+
+  reportProgress(
+    73,
+    "Kontrollerar navigation..."
+  );
 
   const navigationResult = await checkNavigation(
     page,
@@ -631,8 +892,17 @@ const validationResult = await checkValidation(
     });
   }
 
-  // 11. Kontrollerar CTA-knappar och länkar
+
+  // =======================================================
+  // 16. CTA
+  // =======================================================
+
   console.log("\n--- CTA ---");
+
+  reportProgress(
+    76,
+    "Kontrollerar CTA-knappar och länkar..."
+  );
 
   const ctaResult = await checkCTA(
     page,
@@ -658,8 +928,17 @@ const validationResult = await checkValidation(
     });
   }
 
-  // 12. Kontrollerar sociala medier
+
+  // =======================================================
+  // 17. SOCIALA MEDIER
+  // =======================================================
+
   console.log("\n--- SOCIALA MEDIER ---");
+
+  reportProgress(
+    79,
+    "Kontrollerar sociala medier..."
+  );
 
   const socialMediaResult =
     await checkSocialMedia(
@@ -687,8 +966,17 @@ const validationResult = await checkValidation(
     });
   }
 
-  // 13. Kontrollerar Google Maps
+
+  // =======================================================
+  // 18. GOOGLE MAPS
+  // =======================================================
+
   console.log("\n--- GOOGLE MAPS ---");
+
+  reportProgress(
+    82,
+    "Kontrollerar Google Maps..."
+  );
 
   const googleMapsResult =
     await checkGoogleMaps(
@@ -696,14 +984,14 @@ const validationResult = await checkValidation(
       pages
     );
 
-    if (googleMapsResult.found.length > 0) {
+  if (googleMapsResult.found.length > 0) {
 
     results.push({
       name: "Google Maps",
       status: "PASS",
 
       // Visar hur många Google Maps-förekomster som hittades.
-      // Resultatet kan vara en länk eller en inbäddad Google Maps-karta.
+      // Resultatet kan vara en länk eller en inbäddad karta.
       message:
         `${googleMapsResult.found.length} Google Maps-förekomster hittades`,
     });
@@ -720,8 +1008,17 @@ const validationResult = await checkValidation(
     });
   }
 
-  // 14. Kontrollerar Google Business Profile
+
+  // =======================================================
+  // 19. GOOGLE BUSINESS PROFILE
+  // =======================================================
+
   console.log("\n--- GOOGLE BUSINESS PROFILE ---");
+
+  reportProgress(
+    85,
+    "Kontrollerar Google Business Profile..."
+  );
 
   const googleBusinessProfileResult =
     await checkGoogleBusinessProfile(
@@ -772,44 +1069,79 @@ const validationResult = await checkValidation(
     });
   }
 
-// Analyserar alla QA-resultat med den lokala AI-modellen.
-// Om AI:n inte fungerar ska den vanliga QA-rapporten ändå visas.
-console.log("\n--- AI-ANALYS ---");
 
-let aiAnalysis =
-  "AI-analys kunde inte genomföras.";
+  // =======================================================
+  // 20. AI-ANALYS
+  // =======================================================
 
-try {
+  // Analyserar alla QA-resultat med den lokala AI-modellen.
+  // Om AI:n inte fungerar ska den vanliga QA-rapporten ändå visas.
+  console.log("\n--- AI-ANALYS ---");
 
-  // Försöker analysera QA-resultaten med Ollama.
-  aiAnalysis =
-    await analyzeQAResults(results);
-
-  // Visar AI:ns analys om den lyckades.
-  console.log(aiAnalysis);
-
-} catch (error) {
-
-  // AI-fel ska inte stoppa resten av QA-systemet.
-  console.log(
-    "⚠ AI-analysen kunde inte genomföras."
+  reportProgress(
+    88,
+    "Analyserar QA-resultatet med AI..."
   );
 
-  // Lägger till en WARNING i QA-rapporten.
-  results.push({
-    name: "AI-analys",
-    status: "WARNING",
-    message:
-      "AI-analysen kunde inte genomföras",
-  });
-}
+  let aiAnalysis =
+    "AI-analys kunde inte genomföras.";
 
-// Skriver alltid ut den färdiga QA-rapporten,
-// även om AI-analysen misslyckades.
-printQAReport(
-  url,
-  results
-);
+  try {
+
+    // Försöker analysera QA-resultaten med Ollama.
+    aiAnalysis =
+      await analyzeQAResults(results);
+
+    // Visar AI:ns analys om den lyckades.
+    console.log(aiAnalysis);
+
+  } catch (error) {
+
+    // AI-fel ska inte stoppa resten av QA-systemet.
+    console.log(
+      "⚠ AI-analysen kunde inte genomföras."
+    );
+
+    // Lägger till en WARNING i QA-rapporten.
+    results.push({
+      name: "AI-analys",
+      status: "WARNING",
+      message:
+        "AI-analysen kunde inte genomföras",
+    });
+  }
+
+
+  // =======================================================
+  // 21. QA-RAPPORT
+  // =======================================================
+
+  reportProgress(
+    94,
+    "Sammanställer QA-rapport..."
+  );
+
+  // Skriver alltid ut den färdiga QA-rapporten,
+  // även om AI-analysen misslyckades.
+  printQAReport(
+    url,
+    results
+  );
+
+
+  // =======================================================
+  // KLAR
+  // =======================================================
+
+  reportProgress(
+    100,
+    "QA-analysen är klar."
+  );
+
+
+  // =======================================================
+  // RETURNERA RESULTAT
+  // =======================================================
 
   // Returnerar grundläggande information samt AI-analysen.
   return {
