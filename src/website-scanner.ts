@@ -696,13 +696,16 @@ const validationResult = await checkValidation(
       pages
     );
 
-  if (googleMapsResult.found.length > 0) {
+    if (googleMapsResult.found.length > 0) {
 
     results.push({
       name: "Google Maps",
       status: "PASS",
+
+      // Visar hur många Google Maps-förekomster som hittades.
+      // Resultatet kan vara en länk eller en inbäddad Google Maps-karta.
       message:
-        `${googleMapsResult.found.length} Google Maps-länkar hittades`,
+        `${googleMapsResult.found.length} Google Maps-förekomster hittades`,
     });
 
   } else {
@@ -710,8 +713,10 @@ const validationResult = await checkValidation(
     results.push({
       name: "Google Maps",
       status: "WARNING",
+
+      // Visar tydligt att ingen Google Maps-förekomst hittades.
       message:
-        "Ingen Google Maps-länk hittades",
+        "Ingen Google Maps-förekomst hittades",
     });
   }
 
