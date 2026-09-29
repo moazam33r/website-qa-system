@@ -85,6 +85,17 @@ OLLAMA_TIMEOUT_MS=180000
 AI-analysen körs lokalt med Ollama.
 
 Ollama måste installeras separat på den dator där QA-systemet ska köras.
+### Lokal AI
+
+AI-analysen körs lokalt på datorn via Ollama.
+
+Det innebär att QA-resultaten skickas till den lokala Ollama-servern istället för en extern AI-tjänst.
+
+Projektet använder modellen:
+
+qwen3:4b
+
+Ollama och AI-modellen behöver därför installeras på varje dator där AI-analysen ska användas.
 
 ### Kontrollera Ollama
 
@@ -182,6 +193,21 @@ $env:TARGET_URL="https://digitalkontakt.se"
 npm run qa
 
 Systemet analyserar då webbplatsen och kör QA-kontrollerna.
+## CSV-scanning
+
+QA-systemet kan analysera flera webbplatser automatiskt från en CSV-fil.
+
+CSV-filen kan innehålla flera webbplatsadresser som sedan skickas genom samma QA-process.
+
+Exempel:
+
+https://digitalkontakt.se
+https://kallsvvs.se
+https://abctakplat.se
+
+Det gör det möjligt att analysera flera webbplatser utan att behöva starta varje analys manuellt.
+
+CSV-scanningen använder samma QA-kontroller som en vanlig webbplatsanalys och resultaten kan även sammanställas i rapporter.
 
 ## Automatiserade tester
 
@@ -203,22 +229,26 @@ Om kommandot inte visar några fel är TypeScript-kontrollen godkänd.
 
 ## AI-analys
 
-När QA-kontrollerna är färdiga skickas resultaten till Ollama.
+QA-systemet använder lokal AI för att analysera resultaten från QA-kontrollerna.
 
-AI:n sammanfattar resultaten på svenska i fyra delar:
+AI-analysen körs lokalt via Ollama och modellen:
+
+qwen3:4b
+
+AI:n får endast de resultat som QA-systemet redan har samlat in och används för att sammanfatta resultatet och ge rekommendationer.
+
+Analysen är uppdelad i fyra delar:
 
 1. Vad fungerar bra
 2. Viktigaste problemen
 3. Vad resultaten visar
 4. Rekommendationer
 
-AI:n ska endast utgå från resultaten som QA-systemet har samlat in.
-
-AI:n ska inte hitta på egna fel, mätvärden eller resultat.
+AI-analysen körs som en del av den vanliga QA-processen och resultatet kan visas både i API:t och i den genererade PDF-rapporten.
 
 ## API
 
-Projektet innehåller en Express-baserad API-server.
+Projektet innehåller en Express-baserad API-server som kopplar samman Chrome Extension, QA-systemet, PDF-rapporteringen och den lokala AI-analysen.
 
 Starta API-servern:
 
@@ -228,37 +258,89 @@ eller:
 
 npm run server
 
+API:t används bland annat för att:
+
+- Starta en QA-analys
+- Analysera en webbplats
+- Analysera flera webbplatser från CSV
+- Skicka QA-resultat till den lokala AI-modellen
+- Generera PDF-rapporter
+- Hämta genererade rapporter
+
+Exempel på API-endpoints:
+
+GET  /api/health
+POST /api/scan
+POST /api/scan-csv
+POST /api/scan-csv-progress
+GET  /api/reports/:filename
+
+
+## Chrome Extension
+
+Projektet innehåller en Chrome Extension som fungerar som användargränssnitt för QA-systemet.
+
+Extensionen gör det möjligt att:
+
+1. Ange en webbplats
+2. Starta en QA-analys
+3. Skicka analysen till API-servern
+4. Visa analysresultatet
+5. Öppna den genererade PDF-rapporten
+
+Extensionen gör systemet enklare att använda eftersom användaren inte behöver starta enskilda Playwright-tester manuellt för varje webbplats.
+
+Chrome Extension → API → QA-system → Ollama → PDF-rapport
+
 ## PDF-rapporter
 
-QA-systemet kan skapa PDF-rapporter med resultaten från analysen.
+QA-systemet kan automatiskt skapa professionella PDF-rapporter efter genomförd QA-analys.
 
 Rapporterna innehåller bland annat:
 
-- Genomförda QA-kontroller
-- PASS-resultat
-- WARNING-resultat
-- FAIL-resultat
+- Webbplatsinformation
+- Övergripande QA-status
+- Antal PASS-resultat
+- Antal WARNING-resultat
+- Antal FAIL-resultat
+- Resultat från genomförda QA-kontroller
 - Identifierade problem
-- QA-resultat
 - AI-analys
+- Rekommendationer
+
+Resultaten visas med färgkodade statusrutor:
+
+- Grönt = PASS
+- Orange = WARNING
+- Rött = FAIL
+
+Statusrutorna anpassas automatiskt efter mängden text. Längre meddelanden får därför mer utrymme utan att texten hamnar utanför rutan.
+
+PDF-rapporten kan öppnas direkt från Chrome Extension efter genomförd analys.
+
 
 ## Projektstruktur
 
+Projektet är uppdelat i separata delar för QA-kontroller, AI, API, rapportering, automatiserade tester och Chrome Extension.
+
+```text
 website-qa-system/
 │
 ├── src/
-│   │
 │   ├── ai/
 │   │   ├── ollama-config.ts
-│   │   ├── ollama.ts
 │   │   ├── ollama-worker.ts
+│   │   ├── ollama.ts
 │   │   └── qa-analyzer.ts
 │   │
 │   ├── api/
 │   │   └── server.ts
 │   │
 │   ├── checks/
+│   │   ├── cookie-gdpr.ts
+│   │   ├── csv-import.ts
 │   │   ├── cta.ts
+│   │   ├── domains.ts
 │   │   ├── forms.ts
 │   │   ├── google-business-profile.ts
 │   │   ├── google-maps.ts
@@ -268,22 +350,51 @@ website-qa-system/
 │   │   ├── pages.ts
 │   │   ├── performance.ts
 │   │   ├── responsive.ts
+│   │   ├── security.ts
 │   │   ├── seo.ts
+│   │   ├── similar-domains.ts
 │   │   ├── social-media.ts
-│   │   ├── text.ts
+│   │   ├── text-check.ts
 │   │   └── validation.ts
 │   │
 │   ├── report/
-│   │   └── ...
+│   │   ├── pdf-report.ts
+│   │   └── qa-report.ts
 │   │
 │   ├── cli.ts
 │   └── website-scanner.ts
 │
 ├── tests/
-│   └── ...
+│   ├── basic.spec.ts
+│   ├── cookie-gdpr.spec.ts
+│   ├── crawler.spec.ts
+│   ├── csv-import.spec.ts
+│   ├── cta.spec.ts
+│   ├── domains.spec.ts
+│   ├── forms.spec.ts
+│   ├── google-business-profile.spec.ts
+│   ├── google-maps.spec.ts
+│   ├── images.spec.ts
+│   ├── links.spec.ts
+│   ├── navigation.spec.ts
+│   ├── pages.spec.ts
+│   ├── pdf-report.spec.ts
+│   ├── performance.spec.ts
+│   ├── responsive.spec.ts
+│   ├── security.spec.ts
+│   ├── seo.spec.ts
+│   ├── similar-domains.spec.ts
+│   ├── social-media.spec.ts
+│   ├── text-check.spec.ts
+│   ├── validation.spec.ts
+│   └── website-scanner.spec.ts
 │
 ├── extension/
-│   └── ...
+│   ├── manifest.json
+│   ├── popup.html
+│   └── src/
+│       ├── popup.css
+│       └── popup.js
 │
 ├── .env.example
 ├── .gitignore

@@ -412,11 +412,15 @@ function addOverallStatusCard(
     const background =
         getStatusBackground(status);
 
+    // Sparar aktuell position.
+    const startY =
+        document.y;
+
     // Skapar statuskortet.
     document
         .roundedRect(
             50,
-            document.y,
+            startY,
             document.page.width - 100,
             58,
             8
@@ -431,7 +435,7 @@ function addOverallStatusCard(
         .text(
             "ÖVERGRIPANDE RESULTAT",
             68,
-            document.y + 12
+            startY + 12
         );
 
     // Själva statusen.
@@ -442,14 +446,15 @@ function addOverallStatusCard(
         .text(
             status,
             68,
-            document.y + 28
+            startY + 28
         );
 
     // Återställer fonten.
     document.font("Helvetica");
 
     // Flyttar ner efter kortet.
-    document.moveDown(3.2);
+    document.y =
+        startY + 75;
 }
 
 
@@ -465,11 +470,15 @@ function addWebsiteInformation(
             "sv-SE"
         );
 
+    // Sparar aktuell position.
+    const startY =
+        document.y;
+
     // Skapar informationsruta.
     document
         .roundedRect(
             50,
-            document.y,
+            startY,
             document.page.width - 100,
             70,
             8
@@ -484,7 +493,7 @@ function addWebsiteInformation(
         .text(
             "TESTAD WEBBPLATS",
             65,
-            document.y + 13
+            startY + 13
         );
 
     // URL.
@@ -495,7 +504,7 @@ function addWebsiteInformation(
         .text(
             websiteUrl,
             65,
-            document.y + 28,
+            startY + 28,
             {
                 width:
                     document.page.width - 130,
@@ -509,11 +518,12 @@ function addWebsiteInformation(
         .text(
             `Rapport skapad: ${date}`,
             65,
-            document.y + 47
+            startY + 47
         );
 
     // Flyttar ner efter informationsrutan.
-    document.moveDown(4);
+    document.y =
+        startY + 90;
 }
 
 
@@ -522,6 +532,11 @@ function addWebsiteInformation(
 // ==========================================
 
 // Skriver ut alla QA-resultat på ett tydligt sätt.
+//
+// Viktig ändring:
+// Kortets höjd räknas nu automatiskt utifrån textens
+// faktiska höjd. Det gör att långa WARNING/FAIL-meddelanden
+// får en större ruta istället för att texten klipps.
 function addQAResults(
     document: PDFKit.PDFDocument,
     results: QACheckResult[]
@@ -532,11 +547,66 @@ function addQAResults(
         const result of results
     ) {
 
-        // Kontrollerar om vi behöver en ny sida.
+        // Bredden på hela resultatkortet.
+        const cardWidth =
+            document.page.width - 100;
+
+        // Bredden som används för meddelandet.
+        const messageWidth =
+            document.page.width - 190;
+
+        // Bestämmer textens höjd innan vi ritar rutan.
+        let messageHeight = 0;
+
+        if (result.message) {
+
+            // Samma font och storlek som används
+            // när meddelandet faktiskt skrivs.
+            document
+                .font("Helvetica")
+                .fontSize(8);
+
+            // Räknar ut hur hög texten kommer att bli.
+            messageHeight =
+                document.heightOfString(
+                    result.message,
+                    {
+                        width: messageWidth,
+                        lineGap: 2,
+                    }
+                );
+        }
+
+        // Grundhöjd för rubriken.
+        const titleHeight =
+            20;
+
+        // Extra marginal runt meddelandet.
+        const messagePadding =
+            result.message
+                ? 18
+                : 0;
+
+        // Minsta höjd för ett resultatkort.
+        const cardHeight =
+            Math.max(
+                result.message
+                    ? titleHeight +
+                      messageHeight +
+                      messagePadding
+                    : 35,
+                35
+            );
+
+        // Kontrollerar om hela kortet får plats
+        // innan vi börjar rita det.
         if (
-            document.y >
-            document.page.height - 130
+            document.y +
+            cardHeight >
+            document.page.height - 60
         ) {
+
+            // Skapar en ny sida om det behövs.
             document.addPage();
 
             // Skriver en liten fortsättningsrubrik.
@@ -548,8 +618,16 @@ function addQAResults(
                     "QA-kontroller – fortsättning"
                 );
 
+            // Lägger lite luft under rubriken.
             document.moveDown();
+
+            // Återställer fonten innan nästa beräkning.
+            document.font("Helvetica");
         }
+
+        // Sparar aktuell Y-position efter eventuell ny sida.
+        const startY =
+            document.y;
 
         // Hämtar färg för status.
         const color =
@@ -563,22 +641,12 @@ function addQAResults(
                 result.status
             );
 
-        // Sparar aktuell Y-position.
-        const startY =
-            document.y;
-
-        // Bestämmer höjden på resultatkortet.
-        const cardHeight =
-            result.message
-                ? 55
-                : 35;
-
         // Skapar resultatkortets bakgrund.
         document
             .roundedRect(
                 50,
                 startY,
-                document.page.width - 100,
+                cardWidth,
                 cardHeight,
                 6
             )
@@ -623,17 +691,20 @@ function addQAResults(
                 .text(
                     result.message,
                     125,
-                    startY + 26,
+                    startY + titleHeight,
                     {
                         width:
-                            document.page.width - 190,
+                            messageWidth,
+                        lineGap: 2,
                     }
                 );
         }
 
         // Flyttar ner efter resultatkortet.
         document.y =
-            startY + cardHeight + 8;
+            startY +
+            cardHeight +
+            8;
     }
 }
 
@@ -643,6 +714,8 @@ function addQAResults(
 // ==========================================
 
 // Lägger till AI-analysen i PDF-rapporten.
+//
+// Även AI-rutan anpassas automatiskt efter textens höjd.
 function addAIAnalysis(
     document: PDFKit.PDFDocument,
     aiAnalysis: string
@@ -669,13 +742,50 @@ function addAIAnalysis(
 
     document.moveDown();
 
+    // Bredden som används för AI-texten.
+    const textWidth =
+        document.page.width - 130;
+
+    // Använder samma fontinställningar
+    // som när AI-texten skrivs.
+    document
+        .font("Helvetica")
+        .fontSize(9);
+
+    // Räknar ut AI-textens faktiska höjd.
+    const textHeight =
+        document.heightOfString(
+            aiAnalysis,
+            {
+                width: textWidth,
+                lineGap: 4,
+            }
+        );
+
+    // Skapar extra luft runt texten.
+    const paddingTop =
+        12;
+
+    const paddingBottom =
+        16;
+
+    // Räknar ut exakt höjd för AI-rutan.
+    const boxHeight =
+        textHeight +
+        paddingTop +
+        paddingBottom;
+
+    // Sparar aktuell position.
+    const startY =
+        document.y;
+
     // Skapar bakgrund för AI-analysen.
     document
         .roundedRect(
             50,
-            document.y,
+            startY,
             document.page.width - 100,
-            30,
+            boxHeight,
             8
         )
         .fill("#f7f9fb");
@@ -688,13 +798,18 @@ function addAIAnalysis(
         .text(
             aiAnalysis,
             65,
-            document.y + 12,
+            startY + paddingTop,
             {
-                width:
-                    document.page.width - 130,
+                width: textWidth,
                 lineGap: 4,
             }
         );
+
+    // Flyttar dokumentets position efter AI-rutan.
+    document.y =
+        startY +
+        boxHeight +
+        15;
 }
 
 
@@ -1045,11 +1160,15 @@ export async function createCSVPDFReport(
     );
 
 
+    // Sparar positionen för översiktsrutan.
+    const overviewY =
+        document.y;
+
     // Skapar översiktsruta.
     document
         .roundedRect(
             50,
-            document.y,
+            overviewY,
             document.page.width - 100,
             90,
             8
@@ -1065,7 +1184,7 @@ export async function createCSVPDFReport(
         .text(
             "Antal webbplatser",
             70,
-            document.y + 17
+            overviewY + 17
         );
 
     document
@@ -1074,7 +1193,7 @@ export async function createCSVPDFReport(
         .text(
             String(reports.length),
             70,
-            document.y + 34
+            overviewY + 34
         );
 
 
@@ -1086,7 +1205,7 @@ export async function createCSVPDFReport(
         .text(
             "Klara",
             230,
-            document.y + 17
+            overviewY + 17
         );
 
     document
@@ -1094,7 +1213,7 @@ export async function createCSVPDFReport(
         .text(
             String(completed),
             230,
-            document.y + 34
+            overviewY + 34
         );
 
 
@@ -1105,7 +1224,7 @@ export async function createCSVPDFReport(
         .text(
             "Misslyckade",
             350,
-            document.y + 17
+            overviewY + 17
         );
 
     document
@@ -1113,7 +1232,7 @@ export async function createCSVPDFReport(
         .text(
             String(failed),
             350,
-            document.y + 34
+            overviewY + 34
         );
 
 
@@ -1129,12 +1248,13 @@ export async function createCSVPDFReport(
                 )
             }`,
             70,
-            document.y + 65
+            overviewY + 65
         );
 
 
     // Flyttar ner efter översiktsrutan.
-    document.moveDown(6);
+    document.y =
+        overviewY + 110;
 
 
     // ==========================================
@@ -1152,25 +1272,62 @@ export async function createCSVPDFReport(
         const report of reports
     ) {
 
-        // Kontrollerar om vi behöver en ny sida.
-        if (
-            document.y >
-            document.page.height - 150
-        ) {
-            document.addPage();
-        }
-
-
         // Hanterar misslyckad skanning.
         if (!report.success) {
+
+            // Texten som ska visas i felrutan.
+            const errorText =
+                `Fel: ${
+                    report.error ??
+                    "Okänt fel"
+                }`;
+
+            // Räknar ut höjden på feltexten.
+            document
+                .font("Helvetica")
+                .fontSize(8);
+
+            const errorTextHeight =
+                document.heightOfString(
+                    errorText,
+                    {
+                        width:
+                            document.page.width - 175,
+                    }
+                );
+
+            // Dynamisk höjd för felrutan.
+            const errorCardHeight =
+                Math.max(
+                    60,
+                    errorTextHeight + 42
+                );
+
+            // Kontrollerar om rutan får plats.
+            if (
+                document.y +
+                errorCardHeight >
+                document.page.height - 60
+            ) {
+                document.addPage();
+
+                addSectionTitle(
+                    document,
+                    "Resultat per webbplats – fortsättning"
+                );
+            }
+
+            // Sparar positionen.
+            const startY =
+                document.y;
 
             // Skapar FAIL-kort.
             document
                 .roundedRect(
                     50,
-                    document.y,
+                    startY,
                     document.page.width - 100,
-                    60,
+                    errorCardHeight,
                     7
                 )
                 .fill("#fdecec");
@@ -1183,7 +1340,7 @@ export async function createCSVPDFReport(
                 .text(
                     "FAIL",
                     65,
-                    document.y + 12
+                    startY + 12
                 );
 
             // Skriver URL.
@@ -1194,7 +1351,7 @@ export async function createCSVPDFReport(
                 .text(
                     report.websiteUrl,
                     110,
-                    document.y + 12,
+                    startY + 12,
                     {
                         width:
                             document.page.width - 175,
@@ -1206,20 +1363,20 @@ export async function createCSVPDFReport(
                 .fillColor("#6c757d")
                 .fontSize(8)
                 .text(
-                    `Fel: ${
-                        report.error ??
-                        "Okänt fel"
-                    }`,
+                    errorText,
                     110,
-                    document.y + 29,
+                    startY + 29,
                     {
                         width:
                             document.page.width - 175,
                     }
                 );
 
-            // Flyttar ner.
-            document.moveDown(4);
+            // Flyttar ner efter den dynamiska rutan.
+            document.y =
+                startY +
+                errorCardHeight +
+                10;
 
             continue;
         }
@@ -1251,11 +1408,15 @@ export async function createCSVPDFReport(
             );
 
 
+        // Sparar positionen för webbplatskortet.
+        const startY =
+            document.y;
+
         // Skapar webbplatskort.
         document
             .roundedRect(
                 50,
-                document.y,
+                startY,
                 document.page.width - 100,
                 82,
                 7
@@ -1271,7 +1432,7 @@ export async function createCSVPDFReport(
             .text(
                 overallStatus,
                 65,
-                document.y + 13
+                startY + 13
             );
 
 
@@ -1283,7 +1444,7 @@ export async function createCSVPDFReport(
             .text(
                 report.websiteUrl,
                 135,
-                document.y + 12,
+                startY + 12,
                 {
                     width:
                         document.page.width - 200,
@@ -1299,7 +1460,7 @@ export async function createCSVPDFReport(
             .text(
                 `PASS: ${counts.pass}`,
                 135,
-                document.y + 32
+                startY + 32
             );
 
 
@@ -1309,7 +1470,7 @@ export async function createCSVPDFReport(
             .text(
                 `WARNING: ${counts.warning}`,
                 220,
-                document.y + 32
+                startY + 32
             );
 
 
@@ -1319,7 +1480,7 @@ export async function createCSVPDFReport(
             .text(
                 `FAIL: ${counts.fail}`,
                 330,
-                document.y + 32
+                startY + 32
             );
 
 
@@ -1332,12 +1493,13 @@ export async function createCSVPDFReport(
                     report.results.length
                 }`,
                 135,
-                document.y + 51
+                startY + 51
             );
 
 
-        // Flyttar ner.
-        document.moveDown(5);
+        // Flyttar ner efter webbplatskortet.
+        document.y =
+            startY + 92;
     }
 
 
@@ -1369,13 +1531,43 @@ export async function createCSVPDFReport(
                 "Skanningen misslyckades"
             );
 
+            // Texten som ska visas.
+            const errorText =
+                report.error ??
+                "Okänt fel";
+
+            // Räknar ut textens höjd.
+            document
+                .font("Helvetica")
+                .fontSize(9);
+
+            const errorTextHeight =
+                document.heightOfString(
+                    errorText,
+                    {
+                        width:
+                            document.page.width - 136,
+                    }
+                );
+
+            // Dynamisk höjd för felrutan.
+            const errorBoxHeight =
+                Math.max(
+                    75,
+                    errorTextHeight + 55
+                );
+
+            // Sparar positionen.
+            const startY =
+                document.y;
+
             // Skapar felruta.
             document
                 .roundedRect(
                     50,
-                    document.y,
+                    startY,
                     document.page.width - 100,
-                    75,
+                    errorBoxHeight,
                     8
                 )
                 .fill("#fdecec");
@@ -1388,7 +1580,7 @@ export async function createCSVPDFReport(
                 .text(
                     "FAIL",
                     68,
-                    document.y + 15
+                    startY + 15
                 );
 
             // Skriver felmeddelandet.
@@ -1397,10 +1589,9 @@ export async function createCSVPDFReport(
                 .fontSize(9)
                 .font("Helvetica")
                 .text(
-                    report.error ??
-                    "Okänt fel",
+                    errorText,
                     68,
-                    document.y + 35,
+                    startY + 35,
                     {
                         width:
                             document.page.width - 136,
@@ -1530,32 +1721,11 @@ export async function createCSVPDFReport(
             pages.start + index
         );
 
-        // Lägger till rätt sidnummer.
-        document
-            .fillColor("#6c757d")
-            .fontSize(8)
-            .text(
-                "Website QA System",
-                50,
-                document.page.height - 35,
-                {
-                    width: 250,
-                    align: "left",
-                }
-            );
-
-        document
-            .fillColor("#6c757d")
-            .fontSize(8)
-            .text(
-                `Sida ${index + 1}`,
-                document.page.width - 150,
-                document.page.height - 35,
-                {
-                    width: 100,
-                    align: "right",
-                }
-            );
+        // Lägger till professionell sidfot.
+        addFooter(
+            document,
+            index + 1
+        );
     }
 
 
