@@ -167,62 +167,134 @@ function getStatusBackground(
 // PDF-HJÄLPFUNKTIONER
 // ==========================================
 
-// Lägger till en sidfot med sidnummer.
+/**
+ * Lägger till sidfot på den aktuella PDF-sidan.
+ *
+ * Viktigt:
+ * Sidfoten måste ligga innanför PDFKit:s bottom margin.
+ *
+ * Tidigare placerades sidfoten för långt ner på sidan.
+ * Det gjorde att PDFKit försökte skapa nya sidor.
+ *
+ * Sidfoten placeras nu på en säker position
+ * ovanför PDFKit:s nedersta marginal.
+ */
 function addFooter(
     document: PDFKit.PDFDocument,
     pageNumber: number
 ): void {
 
-    // Beräknar positionen för sidfoten.
-    const currentY =
-        document.page.height - 35;
+    // Hämtar sidans höjd.
+    const pageHeight =
+        document.page.height;
 
-    // Skapar en tunn linje ovanför sidfoten.
+    // Hämtar sidans bredd.
+    const pageWidth =
+        document.page.width;
+
+    // PDF-dokumentet använder margin: 50.
+    // Vi placerar därför sidfoten 65 punkter
+    // från sidans nederkant.
+    //
+    // Detta håller texten inom PDFKit:s tillåtna
+    // textområde och förhindrar extra sidor.
+    const footerY =
+        pageHeight - 65;
+
+    // Sparar PDF-dokumentets nuvarande inställningar.
+    document.save();
+
+    // Sparar den aktuella textpositionen.
+    const savedX =
+        document.x;
+
+    const savedY =
+        document.y;
+
+
+    // ==========================================
+    // LINJE OVANFÖR SIDFOTEN
+    // ==========================================
+
+    // Ställer in färg och tjocklek på linjen.
     document
         .strokeColor("#d9dee3")
-        .lineWidth(0.5)
+        .lineWidth(0.5);
+
+    // Ritar en tunn linje ovanför sidfoten.
+    document
         .moveTo(
             50,
-            currentY - 8
+            footerY - 8
         )
         .lineTo(
-            document.page.width - 50,
-            currentY - 8
+            pageWidth - 50,
+            footerY - 8
         )
         .stroke();
 
-    // Skriver projektets namn.
+
+    // ==========================================
+    // PROJEKTETS NAMN
+    // ==========================================
+
+    // Ställer in färg, font och storlek.
     document
         .fillColor("#6c757d")
-        .fontSize(8)
-        .text(
-            "Website QA System",
-            50,
-            currentY,
-            {
-                width: 250,
-                align: "left",
-            }
-        );
+        .font("Helvetica")
+        .fontSize(8);
 
-    // Skriver det aktuella sidnumret.
-    document
-        .fillColor("#6c757d")
-        .fontSize(8)
-        .text(
-            `Sida ${pageNumber}`,
-            document.page.width - 150,
-            currentY,
-            {
-                width: 100,
-                align: "right",
-            }
-        );
+    // Skriver projektnamnet på en fast position.
+    //
+    // height begränsar textområdet.
+    // lineBreak:false förhindrar att PDFKit
+    // försöker skapa ytterligare rader.
+    document.text(
+        "Website QA System",
+        50,
+        footerY,
+        {
+            width: 250,
+            height: 10,
+            lineBreak: false,
+            align: "left",
+        }
+    );
 
-    // Återställer färgen till svart.
-    document.fillColor("#212529");
+
+    // ==========================================
+    // SIDNUMMER
+    // ==========================================
+
+    // Skriver sidnumret på höger sida.
+    document.text(
+        `Sida ${pageNumber}`,
+        pageWidth - 150,
+        footerY,
+        {
+            width: 100,
+            height: 10,
+            lineBreak: false,
+            align: "right",
+        }
+    );
+
+
+    // Återställer PDFKit:s tidigare textposition.
+    document.x =
+        savedX;
+
+    document.y =
+        savedY;
+
+    // Återställer tidigare PDF-inställningar.
+    document.restore();
 }
 
+
+// ==========================================
+// RAPPORT HEADER
+// ==========================================
 
 // Lägger till en professionell header.
 function addReportHeader(
@@ -283,6 +355,10 @@ function addReportHeader(
 }
 
 
+// ==========================================
+// SEKTIONSRUBRIK
+// ==========================================
+
 // Lägger till en sektionsrubrik.
 function addSectionTitle(
     document: PDFKit.PDFDocument,
@@ -328,6 +404,10 @@ function addSectionTitle(
     document.font("Helvetica");
 }
 
+
+// ==========================================
+// STATUSKORT
+// ==========================================
 
 // Lägger till ett statuskort.
 function addStatusCard(
@@ -398,6 +478,10 @@ function addStatusCard(
 }
 
 
+// ==========================================
+// ÖVERGRIPANDE STATUS
+// ==========================================
+
 // Lägger till en ruta för övergripande status.
 function addOverallStatusCard(
     document: PDFKit.PDFDocument,
@@ -457,6 +541,10 @@ function addOverallStatusCard(
         startY + 75;
 }
 
+
+// ==========================================
+// WEBBPLATSINFORMATION
+// ==========================================
 
 // Lägger till information om webbplatsen.
 function addWebsiteInformation(
@@ -531,85 +619,216 @@ function addWebsiteInformation(
 // QA-KONTROLLER
 // ==========================================
 
-// Skriver ut alla QA-resultat på ett tydligt sätt.
+// Skriver ut alla QA-resultat i PDF-rapporten.
 //
-// Viktig ändring:
-// Kortets höjd räknas nu automatiskt utifrån textens
-// faktiska höjd. Det gör att långa WARNING/FAIL-meddelanden
-// får en större ruta istället för att texten klipps.
+// Funktionen hanterar både normala och långa resultat.
+//
+// Normala resultat får ett kompakt kort.
+// Väldigt långa resultat får flöda naturligt
+// mellan PDF-sidor.
 function addQAResults(
     document: PDFKit.PDFDocument,
     results: QACheckResult[]
 ): void {
 
-    // Går igenom alla QA-kontroller.
+    // Går igenom alla QA-resultat ett i taget.
     for (
         const result of results
     ) {
 
-        // Bredden på hela resultatkortet.
+        // Bredden på resultatkortet.
         const cardWidth =
             document.page.width - 100;
 
-        // Bredden som används för meddelandet.
-        const messageWidth =
+        // Vänster marginal för texten inne i kortet.
+        const textX =
+            125;
+
+        // Höger marginal för texten.
+        const textWidth =
             document.page.width - 190;
 
-        // Bestämmer textens höjd innan vi ritar rutan.
-        let messageHeight = 0;
-
-        if (result.message) {
-
-            // Samma font och storlek som används
-            // när meddelandet faktiskt skrivs.
-            document
-                .font("Helvetica")
-                .fontSize(8);
-
-            // Räknar ut hur hög texten kommer att bli.
-            messageHeight =
-                document.heightOfString(
-                    result.message,
-                    {
-                        width: messageWidth,
-                        lineGap: 2,
-                    }
-                );
-        }
-
-        // Grundhöjd för rubriken.
+        // Standardhöjd för rubriken.
         const titleHeight =
             20;
 
-        // Extra marginal runt meddelandet.
+        // Extra utrymme runt meddelandet.
         const messagePadding =
             result.message
                 ? 18
                 : 0;
 
-        // Minsta höjd för ett resultatkort.
+        // Räknar ut hur hög själva meddelandet blir.
+        let messageHeight =
+            0;
+
+        if (result.message) {
+
+            // Använder samma font som vid utskrift.
+            document
+                .font("Helvetica")
+                .fontSize(8);
+
+            // Räknar ut faktisk texthöjd.
+            messageHeight =
+                document.heightOfString(
+                    result.message,
+                    {
+                        width: textWidth,
+                        lineGap: 2,
+                    }
+                );
+        }
+
+        // Räknar ut total höjd för kortet.
         const cardHeight =
             Math.max(
-                result.message
-                    ? titleHeight +
-                      messageHeight +
-                      messagePadding
-                    : 35,
-                35
+                35,
+                titleHeight +
+                messageHeight +
+                messagePadding
             );
 
-        // Kontrollerar om hela kortet får plats
-        // innan vi börjar rita det.
+        // Maximal höjd för ett normalt kort.
+        const maximumCardHeight =
+            document.page.height - 120;
+
+
+        // ==========================================
+        // NORMALT RESULTAT
+        // ==========================================
+
         if (
-            document.y +
-            cardHeight >
+            cardHeight <=
+            maximumCardHeight
+        ) {
+
+            // Om hela kortet inte får plats på aktuell sida
+            // skapar vi en ny sida innan vi börjar.
+            if (
+                document.y +
+                cardHeight >
+                document.page.height - 60
+            ) {
+
+                document.addPage();
+
+                // Visar att QA-resultaten fortsätter.
+                document
+                    .fillColor("#17202a")
+                    .fontSize(11)
+                    .font("Helvetica-Bold")
+                    .text(
+                        "QA-kontroller – fortsättning"
+                    );
+
+                document.moveDown();
+
+                document.font("Helvetica");
+            }
+
+            // Sparar kortets startposition.
+            const startY =
+                document.y;
+
+            // Hämtar statusfärg.
+            const color =
+                getStatusColor(
+                    result.status
+                );
+
+            // Hämtar bakgrundsfärg.
+            const background =
+                getStatusBackground(
+                    result.status
+                );
+
+            // Skapar bakgrunden för resultatkortet.
+            document
+                .roundedRect(
+                    50,
+                    startY,
+                    cardWidth,
+                    cardHeight,
+                    6
+                )
+                .fill(background);
+
+            // Skriver status.
+            document
+                .fillColor(color)
+                .fontSize(8)
+                .font("Helvetica-Bold")
+                .text(
+                    result.status,
+                    65,
+                    startY + 10,
+                    {
+                        width: 65,
+                    }
+                );
+
+            // Skriver kontrollens namn.
+            document
+                .fillColor("#212529")
+                .fontSize(10)
+                .font("Helvetica-Bold")
+                .text(
+                    result.name,
+                    textX,
+                    startY + 9,
+                    {
+                        width: textWidth,
+                    }
+                );
+
+            // Skriver meddelandet.
+            if (result.message) {
+
+                document
+                    .fillColor("#495057")
+                    .fontSize(8)
+                    .font("Helvetica")
+                    .text(
+                        result.message,
+                        textX,
+                        startY + titleHeight,
+                        {
+                            width: textWidth,
+                            lineGap: 2,
+                        }
+                    );
+            }
+
+            // Flyttar ner efter kortet.
+            document.y =
+                startY +
+                cardHeight +
+                8;
+
+            continue;
+        }
+
+
+        // ==========================================
+        // MYCKET LÅNGT RESULTAT
+        // ==========================================
+
+        // Om ett meddelande är extremt långt ska vi
+        // inte skapa ett enormt kort.
+        //
+        // I stället visar vi rubriken först och sedan
+        // texten direkt i dokumentet.
+
+        // Om vi inte har plats för rubriken på sidan
+        // börjar vi på en ny sida.
+        if (
+            document.y + 45 >
             document.page.height - 60
         ) {
 
-            // Skapar en ny sida om det behövs.
             document.addPage();
 
-            // Skriver en liten fortsättningsrubrik.
             document
                 .fillColor("#17202a")
                 .fontSize(11)
@@ -618,39 +837,18 @@ function addQAResults(
                     "QA-kontroller – fortsättning"
                 );
 
-            // Lägger lite luft under rubriken.
             document.moveDown();
-
-            // Återställer fonten innan nästa beräkning.
-            document.font("Helvetica");
         }
 
-        // Sparar aktuell Y-position efter eventuell ny sida.
+        // Sparar startpositionen.
         const startY =
             document.y;
 
-        // Hämtar färg för status.
+        // Hämtar statusfärg.
         const color =
             getStatusColor(
                 result.status
             );
-
-        // Hämtar bakgrund för status.
-        const background =
-            getStatusBackground(
-                result.status
-            );
-
-        // Skapar resultatkortets bakgrund.
-        document
-            .roundedRect(
-                50,
-                startY,
-                cardWidth,
-                cardHeight,
-                6
-            )
-            .fill(background);
 
         // Skriver status.
         document
@@ -660,7 +858,7 @@ function addQAResults(
             .text(
                 result.status,
                 65,
-                startY + 10,
+                startY + 2,
                 {
                     width: 65,
                 }
@@ -673,15 +871,23 @@ function addQAResults(
             .font("Helvetica-Bold")
             .text(
                 result.name,
-                125,
-                startY + 9,
+                textX,
+                startY,
                 {
-                    width:
-                        document.page.width - 190,
+                    width: textWidth,
                 }
             );
 
-        // Skriver meddelandet om det finns.
+        // Flyttar ner efter rubriken.
+        document.y =
+            startY +
+            titleHeight +
+            8;
+
+        // Skriver den långa texten direkt.
+        //
+        // PDFKit får själv flytta texten till nästa sida
+        // när sidan tar slut.
         if (result.message) {
 
             document
@@ -690,22 +896,22 @@ function addQAResults(
                 .font("Helvetica")
                 .text(
                     result.message,
-                    125,
-                    startY + titleHeight,
+                    65,
+                    document.y,
                     {
                         width:
-                            messageWidth,
+                            document.page.width - 130,
                         lineGap: 2,
                     }
                 );
         }
 
-        // Flyttar ner efter resultatkortet.
-        document.y =
-            startY +
-            cardHeight +
-            8;
+        // Lite mellanrum innan nästa kontroll.
+        document.moveDown(1);
     }
+
+    // Återställer fonten efter alla resultat.
+    document.font("Helvetica");
 }
 
 
@@ -713,15 +919,16 @@ function addQAResults(
 // AI-ANALYS
 // ==========================================
 
-// Lägger till AI-analysen i PDF-rapporten.
+// Skriver ut AI-analysen i PDF-rapporten.
 //
-// Även AI-rutan anpassas automatiskt efter textens höjd.
+// Texten får flöda naturligt mellan sidor.
+// Vi använder därför inte ett stort bakgrundskort.
 function addAIAnalysis(
     document: PDFKit.PDFDocument,
     aiAnalysis: string
 ): void {
 
-    // AI-analysen får en egen sida.
+    // Skapar en ny sida för AI-analysen.
     document.addPage();
 
     // Skriver rubriken.
@@ -730,67 +937,27 @@ function addAIAnalysis(
         "AI-analys"
     );
 
-    // Förklarar vad AI-analysen är.
+    // Skriver en kort förklaring under rubriken.
     document
         .fillColor("#6c757d")
         .fontSize(9)
         .font("Helvetica")
         .text(
-            "Automatiserad analys av QA-resultaten "
-            + "genererad av projektets lokala AI-modell."
+            "Automatiserad analys av QA-resultaten " +
+            "genererad av projektets lokala AI-modell."
         );
 
+    // Lite mellanrum före själva analysen.
     document.moveDown();
 
     // Bredden som används för AI-texten.
     const textWidth =
         document.page.width - 130;
 
-    // Använder samma fontinställningar
-    // som när AI-texten skrivs.
-    document
-        .font("Helvetica")
-        .fontSize(9);
-
-    // Räknar ut AI-textens faktiska höjd.
-    const textHeight =
-        document.heightOfString(
-            aiAnalysis,
-            {
-                width: textWidth,
-                lineGap: 4,
-            }
-        );
-
-    // Skapar extra luft runt texten.
-    const paddingTop =
-        12;
-
-    const paddingBottom =
-        16;
-
-    // Räknar ut exakt höjd för AI-rutan.
-    const boxHeight =
-        textHeight +
-        paddingTop +
-        paddingBottom;
-
-    // Sparar aktuell position.
-    const startY =
-        document.y;
-
-    // Skapar bakgrund för AI-analysen.
-    document
-        .roundedRect(
-            50,
-            startY,
-            document.page.width - 100,
-            boxHeight,
-            8
-        )
-        .fill("#f7f9fb");
-
-    // Skriver AI-analysen.
+    // Skriver analysen med normal text.
+    //
+    // PDFKit får själv flytta texten till nästa sida
+    // när det behövs.
     document
         .fillColor("#212529")
         .fontSize(9)
@@ -798,18 +965,18 @@ function addAIAnalysis(
         .text(
             aiAnalysis,
             65,
-            startY + paddingTop,
+            document.y,
             {
                 width: textWidth,
                 lineGap: 4,
             }
         );
 
-    // Flyttar dokumentets position efter AI-rutan.
-    document.y =
-        startY +
-        boxHeight +
-        15;
+    // Lite extra mellanrum efter analysen.
+    document.moveDown(1);
+
+    // Återställer fonten.
+    document.font("Helvetica");
 }
 
 
@@ -822,7 +989,6 @@ export async function createPDFReport(
 ): Promise<string> {
 
     // Använder operativsystemets temporära mapp.
-    // API:t använder redan denna sökväg.
     const reportsDirectory =
         path.join(
             os.tmpdir(),
@@ -956,8 +1122,8 @@ export async function createPDFReport(
     addStatusCard(
         document,
         50 +
-            cardWidth +
-            cardGap,
+        cardWidth +
+        cardGap,
         cardsY,
         cardWidth,
         70,
@@ -970,7 +1136,7 @@ export async function createPDFReport(
     addStatusCard(
         document,
         50 +
-            (cardWidth + cardGap) * 2,
+        (cardWidth + cardGap) * 2,
         cardsY,
         cardWidth,
         70,
@@ -1011,7 +1177,7 @@ export async function createPDFReport(
     // SIDFÖTTER
     // ==========================================
 
-    // Hämtar PDF-sidorna.
+    // Hämtar PDF-sidorna innan sidfötterna läggs till.
     const pages =
         document.bufferedPageRange();
 
@@ -1122,7 +1288,7 @@ export async function createCSVPDFReport(
             filePath
         );
 
-    // Kopplar dokumentet till filen.
+    // Kopplar PDF-dokumentet till filen.
     document.pipe(stream);
 
 
@@ -1309,6 +1475,7 @@ export async function createCSVPDFReport(
                 errorCardHeight >
                 document.page.height - 60
             ) {
+
                 document.addPage();
 
                 addSectionTitle(
@@ -1705,7 +1872,7 @@ export async function createCSVPDFReport(
     // SIDFÖTTER
     // ==========================================
 
-    // Hämtar alla PDF-sidor.
+    // Hämtar alla PDF-sidor innan sidfötterna läggs till.
     const pages =
         document.bufferedPageRange();
 
