@@ -167,7 +167,7 @@
 
         <!-- Text -->
         <strong>
-          Upload CSV file
+          Upload CSV, XLSX, or XLS file
         </strong>
 
         <span>
@@ -175,18 +175,19 @@
         </span>
 
         <small>
-          Supports CSV files
+          Supports CSV, XLSX, and XLS files
         </small>
 
       </label>
 
 
       <!-- Den riktiga filväljaren -->
+      <!-- Filväljare för CSV och Excel -->
       <input
         id="csvFile"
         class="hidden-file-input"
         type="file"
-        accept=".csv"
+        accept=".csv,.xlsx,.xls"
       >
 
 
@@ -198,7 +199,7 @@
       >
 
         <span class="file-icon">
-          CSV
+          📄
         </span>
 
         <span
@@ -217,7 +218,7 @@
       >
 
         <span>
-          Start CSV QA
+          Start Bulk QA
         </span>
 
         <span>
@@ -371,8 +372,10 @@
 
   </main>
 
+  <!-- Laddar XLSX-biblioteket för Excel-filer -->
+  <script src="lib/xlsx.full.min.js"></script>
 
-  <!-- Kopplar popupens JavaScript -->
+  <!-- Laddar popupens JavaScript -->
   <script src="src/popup.js"></script>
 
 </body>
