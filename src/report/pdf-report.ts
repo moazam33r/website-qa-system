@@ -1,30 +1,29 @@
 // PDF-rapport för Website QA System.
 //
-// Den här filen ansvarar för att skapa professionella PDF-rapporter
-// baserat på resultaten från QA-systemet.
+// Den här filen skapar PDF-rapporter från QA-resultaten.
+//
+// Fokus:
+// - Tydlig första sida med sammanfattning.
+// - PASS / WARNING / FAIL visas tydligt.
+// - Problem visas direkt i sammanfattningen.
+// - QA-kontroller visas som separata kort.
+// - Långa resultat flyttas automatiskt till nästa sida.
+// - AI-analysen delas upp i tydliga sektioner.
+// - CSV-rapporter behåller stöd för flera webbplatser.
+// - Sidhuvud och sidfot används konsekvent.
 
-// PDFKit används för att skapa PDF-filer.
 import PDFDocument from "pdfkit";
-
-// fs används för att skapa och kontrollera filer.
 import fs from "fs";
-
-// path används för att skapa säkra filsökvägar.
 import path from "path";
-
-// os används för att hitta operativsystemets temporära mapp.
 import os from "os";
-
-// Importerar typen för QA-resultat.
 import { QACheckResult } from "./qa-report";
 
-
 // ==========================================
-// DATA FÖR EN VANLIG PDF
+// DATASTRUKTURER
 // ==========================================
 
+// Data som används när en vanlig PDF-rapport skapas.
 export interface PDFReportData {
-
     // URL till webbplatsen som testades.
     websiteUrl: string;
 
@@ -35,381 +34,441 @@ export interface PDFReportData {
     aiAnalysis?: string;
 }
 
-
-// ==========================================
-// DATA FÖR EN CSV-WEBBPLATS
-// ==========================================
-
+// Data som används vid CSV-import.
 export interface CSVPDFReportItem {
-
     // Visar om skanningen lyckades.
     success: boolean;
 
     // URL till webbplatsen.
     websiteUrl: string;
 
-    // QA-resultat för webbplatsen.
+    // QA-resultat.
     results: QACheckResult[];
 
-    // Valfritt felmeddelande.
+    // Felmeddelande om skanningen misslyckades.
     error?: string;
 
     // Valfri AI-analys.
     aiAnalysis?: string;
 }
 
+// ==========================================
+// FÄRGER
+// ==========================================
+
+const COLORS = {
+    dark: "#17202a",
+    text: "#212529",
+    secondaryText: "#6c757d",
+    muted: "#495057",
+    border: "#d9dee3",
+    light: "#f7f9fb",
+    white: "#ffffff",
+
+    pass: "#198754",
+    passBackground: "#eaf7ef",
+
+    warning: "#d97706",
+    warningBackground: "#fff4e5",
+
+    fail: "#dc3545",
+    failBackground: "#fdecec",
+};
+
+// ==========================================
+// SIDLAYOUT
+// ==========================================
+
+const PAGE = {
+    margin: 50,
+    contentWidth: 512,
+
+    // Nedersta delen av sidan reserveras för sidfoten.
+    bottomMargin: 75,
+};
 
 // ==========================================
 // HJÄLPFUNKTIONER
 // ==========================================
 
-// Räknar hur många PASS, WARNING och FAIL
-// som finns i QA-resultaten.
-function getResultCounts(
-    results: QACheckResult[]
-) {
-
+// Räknar hur många PASS, WARNING och FAIL som finns.
+function getResultCounts(results: QACheckResult[]) {
     return {
-
-        // Antal kontroller som klarade testet.
-        pass: results.filter(
-            (result) =>
-                result.status === "PASS"
-        ).length,
-
-        // Antal kontroller med varning.
-        warning: results.filter(
-            (result) =>
-                result.status === "WARNING"
-        ).length,
-
-        // Antal kontroller som misslyckades.
-        fail: results.filter(
-            (result) =>
-                result.status === "FAIL"
-        ).length,
+        pass: results.filter((result) => result.status === "PASS").length,
+        warning: results.filter((result) => result.status === "WARNING").length,
+        fail: results.filter((result) => result.status === "FAIL").length,
     };
 }
 
-
-// Bestämmer den övergripande statusen
-// för hela QA-rapporten.
+// Bestämmer rapportens övergripande status.
 function getOverallStatus(
     results: QACheckResult[]
 ): "PASS" | "WARNING" | "FAIL" {
+    const counts = getResultCounts(results);
 
-    // Hämtar antalet resultat per status.
-    const counts =
-        getResultCounts(results);
-
-    // Ett enda FAIL gör att rapporten blir FAIL.
+    // FAIL har högst prioritet.
     if (counts.fail > 0) {
         return "FAIL";
     }
 
-    // Om inga FAIL finns men WARNING finns
-    // blir rapportens status WARNING.
+    // Om inga FAIL finns men WARNING finns blir resultatet WARNING.
     if (counts.warning > 0) {
         return "WARNING";
     }
 
-    // Om allt klarade sig blir resultatet PASS.
+    // Om allt är PASS blir resultatet PASS.
     return "PASS";
 }
 
-
-// ==========================================
-// STATUSINSTÄLLNINGAR
-// ==========================================
-
-// Returnerar färg för aktuell status.
-function getStatusColor(
-    status: string
-): string {
-
-    // Grön används för PASS.
+// Hämtar färg för en status.
+function getStatusColor(status: string): string {
     if (status === "PASS") {
-        return "#198754";
+        return COLORS.pass;
     }
 
-    // Orange används för WARNING.
     if (status === "WARNING") {
-        return "#d97706";
+        return COLORS.warning;
     }
 
-    // Röd används för FAIL.
-    return "#dc3545";
+    return COLORS.fail;
 }
 
-
-// Returnerar en ljus bakgrundsfärg
-// för aktuell status.
-function getStatusBackground(
-    status: string
-): string {
-
-    // Ljusgrön bakgrund för PASS.
+// Hämtar bakgrundsfärg för en status.
+function getStatusBackground(status: string): string {
     if (status === "PASS") {
-        return "#eaf7ef";
+        return COLORS.passBackground;
     }
 
-    // Ljusorange bakgrund för WARNING.
     if (status === "WARNING") {
-        return "#fff4e5";
+        return COLORS.warningBackground;
     }
 
-    // Ljus röd bakgrund för FAIL.
-    return "#fdecec";
+    return COLORS.failBackground;
 }
 
+// Hämtar datum och tid på svenska.
+function getReportDate(): string {
+    return new Date().toLocaleString("sv-SE");
+}
 
 // ==========================================
-// PDF-HJÄLPFUNKTIONER
+// SIDFOT
 // ==========================================
 
-/**
- * Lägger till sidfot på den aktuella PDF-sidan.
- *
- * Viktigt:
- * Sidfoten måste ligga innanför PDFKit:s bottom margin.
- *
- * Tidigare placerades sidfoten för långt ner på sidan.
- * Det gjorde att PDFKit försökte skapa nya sidor.
- *
- * Sidfoten placeras nu på en säker position
- * ovanför PDFKit:s nedersta marginal.
- */
+// Lägger till sidfot på varje sida.
 function addFooter(
     document: PDFKit.PDFDocument,
     pageNumber: number
 ): void {
+    const pageWidth = document.page.width;
+    const footerY = document.page.height - 42;
 
-    // Hämtar sidans höjd.
-    const pageHeight =
-        document.page.height;
-
-    // Hämtar sidans bredd.
-    const pageWidth =
-        document.page.width;
-
-    // PDF-dokumentet använder margin: 50.
-    // Vi placerar därför sidfoten 65 punkter
-    // från sidans nederkant.
-    //
-    // Detta håller texten inom PDFKit:s tillåtna
-    // textområde och förhindrar extra sidor.
-    const footerY =
-        pageHeight - 65;
-
-    // Sparar PDF-dokumentets nuvarande inställningar.
     document.save();
 
-    // Sparar den aktuella textpositionen.
-    const savedX =
-        document.x;
-
-    const savedY =
-        document.y;
-
-
-    // ==========================================
-    // LINJE OVANFÖR SIDFOTEN
-    // ==========================================
-
-    // Ställer in färg och tjocklek på linjen.
+    // Linje ovanför sidfoten.
     document
-        .strokeColor("#d9dee3")
-        .lineWidth(0.5);
-
-    // Ritar en tunn linje ovanför sidfoten.
-    document
-        .moveTo(
-            50,
-            footerY - 8
-        )
-        .lineTo(
-            pageWidth - 50,
-            footerY - 8
-        )
+        .strokeColor(COLORS.border)
+        .lineWidth(0.5)
+        .moveTo(PAGE.margin, footerY - 9)
+        .lineTo(pageWidth - PAGE.margin, footerY - 9)
         .stroke();
 
-
-    // ==========================================
-    // PROJEKTETS NAMN
-    // ==========================================
-
-    // Ställer in färg, font och storlek.
+    // Projektnamn.
     document
-        .fillColor("#6c757d")
+        .fillColor(COLORS.secondaryText)
         .font("Helvetica")
-        .fontSize(8);
-
-    // Skriver projektnamnet på en fast position.
-    //
-    // height begränsar textområdet.
-    // lineBreak:false förhindrar att PDFKit
-    // försöker skapa ytterligare rader.
-    document.text(
-        "Website QA System",
-        50,
-        footerY,
-        {
-            width: 250,
+        .fontSize(8)
+        .text("Website QA System", PAGE.margin, footerY, {
+            width: 220,
             height: 10,
             lineBreak: false,
-            align: "left",
-        }
-    );
+        });
 
+    // Sidnummer.
+    document.text(`Sida ${pageNumber}`, pageWidth - 150, footerY, {
+        width: 100,
+        height: 10,
+        lineBreak: false,
+        align: "right",
+    });
 
-    // ==========================================
-    // SIDNUMMER
-    // ==========================================
-
-    // Skriver sidnumret på höger sida.
-    document.text(
-        `Sida ${pageNumber}`,
-        pageWidth - 150,
-        footerY,
-        {
-            width: 100,
-            height: 10,
-            lineBreak: false,
-            align: "right",
-        }
-    );
-
-
-    // Återställer PDFKit:s tidigare textposition.
-    document.x =
-        savedX;
-
-    document.y =
-        savedY;
-
-    // Återställer tidigare PDF-inställningar.
     document.restore();
 }
 
-
 // ==========================================
-// RAPPORT HEADER
+// SIDHUVUD
 // ==========================================
 
-// Lägger till en professionell header.
+// Lägger till det mörka sidhuvudet.
 function addReportHeader(
     document: PDFKit.PDFDocument,
     websiteUrl: string,
     reportTitle: string
 ): void {
-
-    // Skapar en mörk header högst upp på sidan.
+    // Bakgrund för sidhuvudet.
     document
-        .rect(
-            0,
-            0,
-            document.page.width,
-            95
-        )
-        .fill("#17202a");
+        .rect(0, 0, document.page.width, 96)
+        .fill(COLORS.dark);
 
-    // Projektets namn.
+    // Projektnamn.
     document
-        .fillColor("#ffffff")
+        .fillColor(COLORS.white)
+        .font("Helvetica-Bold")
         .fontSize(20)
-        .text(
-            "Website QA System",
-            50,
-            28
-        );
+        .text("Website QA System", 50, 24);
 
-    // Typ av rapport.
+    // Rapporttyp.
     document
         .fillColor("#d9e2ec")
+        .font("Helvetica")
         .fontSize(10)
-        .text(
-            reportTitle,
-            50,
-            55
-        );
+        .text(reportTitle, 50, 52);
 
-    // Webbplatsens URL.
+    // Testad webbplats.
     document
         .fillColor("#d9e2ec")
+        .font("Helvetica")
         .fontSize(9)
-        .text(
-            websiteUrl,
-            50,
-            72,
-            {
-                width:
-                    document.page.width - 100,
-            }
-        );
+        .text(websiteUrl, 50, 69, {
+            width: document.page.width - 100,
+        });
 
-    // Återställer textfärgen.
-    document.fillColor("#212529");
+    // Nästa innehåll börjar under headern.
+    document.y = 118;
 
-    // Börjar innehållet under headern.
-    document.y = 120;
+    document.fillColor(COLORS.text);
+    document.font("Helvetica");
 }
 
-
-// ==========================================
-// SEKTIONSRUBRIK
-// ==========================================
-
-// Lägger till en sektionsrubrik.
-function addSectionTitle(
+// Header som används när en sektion fortsätter på nästa sida.
+function addContinuationHeader(
     document: PDFKit.PDFDocument,
     title: string
 ): void {
+    document
+        .fillColor(COLORS.dark)
+        .font("Helvetica-Bold")
+        .fontSize(12)
+        .text(title, PAGE.margin, 40);
 
-    // Kontrollerar om det finns tillräckligt med plats.
-    if (
-        document.y >
-        document.page.height - 120
-    ) {
+    document
+        .strokeColor(COLORS.border)
+        .lineWidth(0.8)
+        .moveTo(PAGE.margin, 61)
+        .lineTo(document.page.width - PAGE.margin, 61)
+        .stroke();
+
+    document.y = 80;
+    document.font("Helvetica");
+}
+
+// ==========================================
+// SIDKONTROLL
+// ==========================================
+
+// Kontrollerar om ett block får plats på aktuell sida.
+//
+// Om det inte får plats skapas en ny sida.
+function ensureSpace(
+    document: PDFKit.PDFDocument,
+    requiredHeight: number,
+    continuationTitle?: string
+): void {
+    const bottomLimit =
+        document.page.height - PAGE.bottomMargin;
+
+    if (document.y + requiredHeight > bottomLimit) {
         document.addPage();
+
+        if (continuationTitle) {
+            addContinuationHeader(
+                document,
+                continuationTitle
+            );
+        }
+    }
+}
+
+// ==========================================
+// SEKTIONSRUBRIKER
+// ==========================================
+
+// Skapar en tydlig sektionsrubrik.
+function addSectionTitle(
+    document: PDFKit.PDFDocument,
+    title: string,
+    subtitle?: string
+): void {
+    // Reservar plats för rubriken.
+    ensureSpace(
+        document,
+        subtitle ? 55 : 38
+    );
+
+    const startY = document.y;
+
+    // Huvudrubrik.
+    document
+        .fillColor(COLORS.dark)
+        .font("Helvetica-Bold")
+        .fontSize(15)
+        .text(title, PAGE.margin, startY);
+
+    // Underrubrik.
+    if (subtitle) {
+        document
+            .fillColor(COLORS.secondaryText)
+            .font("Helvetica")
+            .fontSize(8.5)
+            .text(
+                subtitle,
+                PAGE.margin,
+                startY + 21,
+                {
+                    width: PAGE.contentWidth,
+                }
+            );
     }
 
-    // Skriver rubriken.
-    document
-        .fillColor("#17202a")
-        .fontSize(15)
-        .font("Helvetica-Bold")
-        .text(title);
-
-    // Skapar en linje under rubriken.
-    const lineY =
-        document.y + 5;
+    // Linje under rubriken.
+    const lineY = startY + (subtitle ? 39 : 25);
 
     document
-        .strokeColor("#d9dee3")
-        .lineWidth(1)
-        .moveTo(
-            50,
-            lineY
-        )
+        .strokeColor(COLORS.border)
+        .lineWidth(0.8)
+        .moveTo(PAGE.margin, lineY)
         .lineTo(
-            document.page.width - 50,
+            document.page.width - PAGE.margin,
             lineY
         )
         .stroke();
 
-    // Lägger till mellanrum efter rubriken.
-    document.moveDown(0.8);
+    // Nästa innehåll börjar under linjen.
+    document.y = lineY + 13;
 
-    // Återställer fonten.
+    document
+        .fillColor(COLORS.text)
+        .font("Helvetica");
+}
+
+// ==========================================
+// INFORMATION OM WEBBPLATSEN
+// ==========================================
+
+// Visar information om webbplatsen som testades.
+function addWebsiteInformation(
+    document: PDFKit.PDFDocument,
+    websiteUrl: string
+): void {
+    const startY = document.y;
+    const height = 74;
+
+    document
+        .roundedRect(
+            PAGE.margin,
+            startY,
+            PAGE.contentWidth,
+            height,
+            8
+        )
+        .fill(COLORS.light);
+
+    // Liten rubrik.
+    document
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .text(
+            "TESTAD WEBBPLATS",
+            65,
+            startY + 12
+        );
+
+    // URL.
+    document
+        .fillColor(COLORS.text)
+        .font("Helvetica-Bold")
+        .fontSize(10)
+        .text(
+            websiteUrl,
+            65,
+            startY + 28,
+            {
+                width: PAGE.contentWidth - 30,
+            }
+        );
+
+    // Datum.
+    document
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica")
+        .fontSize(8)
+        .text(
+            `Rapport skapad: ${getReportDate()}`,
+            65,
+            startY + 49
+        );
+
+    document.y = startY + height + 16;
+}
+
+// ==========================================
+// ÖVERGRIPANDE STATUS
+// ==========================================
+
+// Visar exempelvis PASS, WARNING eller FAIL.
+function addOverallStatusCard(
+    document: PDFKit.PDFDocument,
+    status: "PASS" | "WARNING" | "FAIL"
+): void {
+    ensureSpace(document, 72);
+
+    const color = getStatusColor(status);
+    const background =
+        getStatusBackground(status);
+
+    const startY = document.y;
+
+    document
+        .roundedRect(
+            PAGE.margin,
+            startY,
+            PAGE.contentWidth,
+            58,
+            8
+        )
+        .fill(background);
+
+    document
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .text(
+            "ÖVERGRIPANDE RESULTAT",
+            68,
+            startY + 11
+        );
+
+    document
+        .fillColor(color)
+        .font("Helvetica-Bold")
+        .fontSize(19)
+        .text(
+            status,
+            68,
+            startY + 26
+        );
+
+    document.y = startY + 73;
+
     document.font("Helvetica");
 }
 
-
 // ==========================================
-// STATUSKORT
+// SAMMANFATTNINGSKORT
 // ==========================================
 
-// Lägger till ett statuskort.
+// Skapar ett kort för PASS, WARNING eller FAIL.
 function addStatusCard(
     document: PDFKit.PDFDocument,
     x: number,
@@ -420,16 +479,10 @@ function addStatusCard(
     value: number,
     status: string
 ): void {
-
-    // Hämtar färg för aktuell status.
-    const color =
-        getStatusColor(status);
-
-    // Hämtar ljus bakgrund.
+    const color = getStatusColor(status);
     const background =
         getStatusBackground(status);
 
-    // Skapar kortets bakgrund.
     document
         .roundedRect(
             x,
@@ -440,564 +493,736 @@ function addStatusCard(
         )
         .fill(background);
 
-    // Skapar färgad kant på vänster sida.
+    // Färgad linje till vänster.
     document
-        .roundedRect(
+        .rect(
             x,
             y,
-            6,
-            height,
-            3
+            5,
+            height
         )
         .fill(color);
 
-    // Skriver kortets label.
     document
-        .fillColor("#6c757d")
-        .fontSize(9)
-        .font("Helvetica")
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica-Bold")
+        .fontSize(8)
         .text(
             label,
-            x + 18,
-            y + 14
+            x + 16,
+            y + 12
         );
 
-    // Skriver antal.
     document
         .fillColor(color)
-        .fontSize(22)
         .font("Helvetica-Bold")
+        .fontSize(22)
         .text(
             String(value),
-            x + 18,
-            y + 31
+            x + 16,
+            y + 28
         );
 
-    // Återställer fonten.
     document.font("Helvetica");
 }
 
-
-// ==========================================
-// ÖVERGRIPANDE STATUS
-// ==========================================
-
-// Lägger till en ruta för övergripande status.
-function addOverallStatusCard(
+// Skapar de tre sammanfattningskorten.
+function addSummaryCards(
     document: PDFKit.PDFDocument,
-    status: string
+    counts: ReturnType<typeof getResultCounts>
 ): void {
+    ensureSpace(document, 80);
 
-    // Hämtar statusfärg.
+    const gap = 12;
+
+    const cardWidth =
+        (PAGE.contentWidth - gap * 2) / 3;
+
+    const y = document.y;
+
+    addStatusCard(
+        document,
+        PAGE.margin,
+        y,
+        cardWidth,
+        64,
+        "PASS",
+        counts.pass,
+        "PASS"
+    );
+
+    addStatusCard(
+        document,
+        PAGE.margin + cardWidth + gap,
+        y,
+        cardWidth,
+        64,
+        "WARNING",
+        counts.warning,
+        "WARNING"
+    );
+
+    addStatusCard(
+        document,
+        PAGE.margin + (cardWidth + gap) * 2,
+        y,
+        cardWidth,
+        64,
+        "FAIL",
+        counts.fail,
+        "FAIL"
+    );
+
+    document.y = y + 80;
+}
+
+// ==========================================
+// QA-RESULTAT
+// ==========================================
+
+// Skapar ett enskilt QA-kort.
+//
+// Exempel:
+//
+// WARNING   SEO
+//           4 SEO-varningar hittades
+function addResultCard(
+    document: PDFKit.PDFDocument,
+    result: QACheckResult,
+    continuationTitle: string = "QA-kontroller – fortsättning"
+): void {
+    const textX = 125;
+
+    const textWidth =
+        document.page.width - 190;
+
+    // Beräkna hur mycket plats meddelandet behöver.
+    let messageHeight = 0;
+
+    if (result.message) {
+        document
+            .font("Helvetica")
+            .fontSize(8.5);
+
+        messageHeight =
+            document.heightOfString(
+                result.message,
+                {
+                    width: textWidth,
+                    lineGap: 2,
+                }
+            );
+    }
+
+    // Minsta höjd är 48.
+    const cardHeight = Math.max(
+        48,
+        29 + messageHeight + 14
+    );
+
+    // Om kortet inte får plats flyttas hela kortet.
+    if (
+        document.y + cardHeight >
+        document.page.height - PAGE.bottomMargin
+    ) {
+        document.addPage();
+
+        addContinuationHeader(
+            document,
+            continuationTitle
+        );
+    }
+
+    const startY = document.y;
+
     const color =
-        getStatusColor(status);
+        getStatusColor(result.status);
 
-    // Hämtar bakgrundsfärg.
     const background =
-        getStatusBackground(status);
+        getStatusBackground(result.status);
 
-    // Sparar aktuell position.
-    const startY =
-        document.y;
-
-    // Skapar statuskortet.
+    // Kortets bakgrund.
     document
         .roundedRect(
-            50,
+            PAGE.margin,
             startY,
-            document.page.width - 100,
-            58,
-            8
+            PAGE.contentWidth,
+            cardHeight,
+            7
         )
         .fill(background);
 
-    // Statusetikett.
-    document
-        .fillColor("#6c757d")
-        .fontSize(9)
-        .font("Helvetica")
-        .text(
-            "ÖVERGRIPANDE RESULTAT",
-            68,
-            startY + 12
-        );
-
-    // Själva statusen.
+    // Status.
     document
         .fillColor(color)
-        .fontSize(19)
         .font("Helvetica-Bold")
+        .fontSize(8)
         .text(
-            status,
-            68,
-            startY + 28
-        );
-
-    // Återställer fonten.
-    document.font("Helvetica");
-
-    // Flyttar ner efter kortet.
-    document.y =
-        startY + 75;
-}
-
-
-// ==========================================
-// WEBBPLATSINFORMATION
-// ==========================================
-
-// Lägger till information om webbplatsen.
-function addWebsiteInformation(
-    document: PDFKit.PDFDocument,
-    websiteUrl: string
-): void {
-
-    // Hämtar aktuellt datum och tid.
-    const date =
-        new Date().toLocaleString(
-            "sv-SE"
-        );
-
-    // Sparar aktuell position.
-    const startY =
-        document.y;
-
-    // Skapar informationsruta.
-    document
-        .roundedRect(
-            50,
-            startY,
-            document.page.width - 100,
-            70,
-            8
-        )
-        .fill("#f7f9fb");
-
-    // Rubrik.
-    document
-        .fillColor("#495057")
-        .fontSize(9)
-        .font("Helvetica-Bold")
-        .text(
-            "TESTAD WEBBPLATS",
+            result.status,
             65,
-            startY + 13
-        );
-
-    // URL.
-    document
-        .fillColor("#212529")
-        .fontSize(10)
-        .font("Helvetica")
-        .text(
-            websiteUrl,
-            65,
-            startY + 28,
+            startY + 10,
             {
-                width:
-                    document.page.width - 130,
+                width: 52,
             }
         );
 
-    // Datum.
+    // Namnet på kontrollen.
     document
-        .fillColor("#6c757d")
-        .fontSize(8)
+        .fillColor(COLORS.text)
+        .font("Helvetica-Bold")
+        .fontSize(10)
         .text(
-            `Rapport skapad: ${date}`,
-            65,
-            startY + 47
+            result.name,
+            textX,
+            startY + 8,
+            {
+                width: textWidth,
+            }
         );
 
-    // Flyttar ner efter informationsrutan.
+    // Resultatets meddelande.
+    if (result.message) {
+        document
+            .fillColor(COLORS.muted)
+            .font("Helvetica")
+            .fontSize(8.5)
+            .text(
+                result.message,
+                textX,
+                startY + 25,
+                {
+                    width: textWidth,
+                    lineGap: 2,
+                }
+            );
+    }
+
+    // Nästa kort börjar under det aktuella.
     document.y =
-        startY + 90;
+        startY + cardHeight + 8;
 }
 
-
-// ==========================================
-// QA-KONTROLLER
-// ==========================================
-
-// Skriver ut alla QA-resultat i PDF-rapporten.
-//
-// Funktionen hanterar både normala och långa resultat.
-//
-// Normala resultat får ett kompakt kort.
-// Väldigt långa resultat får flöda naturligt
-// mellan PDF-sidor.
-function addQAResults(
+// Lägger till alla QA-resultat.
+function addAllQAResults(
     document: PDFKit.PDFDocument,
     results: QACheckResult[]
 ): void {
-
-    // Går igenom alla QA-resultat ett i taget.
-    for (
-        const result of results
-    ) {
-
-        // Bredden på resultatkortet.
-        const cardWidth =
-            document.page.width - 100;
-
-        // Vänster marginal för texten inne i kortet.
-        const textX =
-            125;
-
-        // Höger marginal för texten.
-        const textWidth =
-            document.page.width - 190;
-
-        // Standardhöjd för rubriken.
-        const titleHeight =
-            20;
-
-        // Extra utrymme runt meddelandet.
-        const messagePadding =
-            result.message
-                ? 18
-                : 0;
-
-        // Räknar ut hur hög själva meddelandet blir.
-        let messageHeight =
-            0;
-
-        if (result.message) {
-
-            // Använder samma font som vid utskrift.
-            document
-                .font("Helvetica")
-                .fontSize(8);
-
-            // Räknar ut faktisk texthöjd.
-            messageHeight =
-                document.heightOfString(
-                    result.message,
-                    {
-                        width: textWidth,
-                        lineGap: 2,
-                    }
-                );
-        }
-
-        // Räknar ut total höjd för kortet.
-        const cardHeight =
-            Math.max(
-                35,
-                titleHeight +
-                messageHeight +
-                messagePadding
-            );
-
-        // Maximal höjd för ett normalt kort.
-        const maximumCardHeight =
-            document.page.height - 120;
-
-
-        // ==========================================
-        // NORMALT RESULTAT
-        // ==========================================
-
-        if (
-            cardHeight <=
-            maximumCardHeight
-        ) {
-
-            // Om hela kortet inte får plats på aktuell sida
-            // skapar vi en ny sida innan vi börjar.
-            if (
-                document.y +
-                cardHeight >
-                document.page.height - 60
-            ) {
-
-                document.addPage();
-
-                // Visar att QA-resultaten fortsätter.
-                document
-                    .fillColor("#17202a")
-                    .fontSize(11)
-                    .font("Helvetica-Bold")
-                    .text(
-                        "QA-kontroller – fortsättning"
-                    );
-
-                document.moveDown();
-
-                document.font("Helvetica");
-            }
-
-            // Sparar kortets startposition.
-            const startY =
-                document.y;
-
-            // Hämtar statusfärg.
-            const color =
-                getStatusColor(
-                    result.status
-                );
-
-            // Hämtar bakgrundsfärg.
-            const background =
-                getStatusBackground(
-                    result.status
-                );
-
-            // Skapar bakgrunden för resultatkortet.
-            document
-                .roundedRect(
-                    50,
-                    startY,
-                    cardWidth,
-                    cardHeight,
-                    6
-                )
-                .fill(background);
-
-            // Skriver status.
-            document
-                .fillColor(color)
-                .fontSize(8)
-                .font("Helvetica-Bold")
-                .text(
-                    result.status,
-                    65,
-                    startY + 10,
-                    {
-                        width: 65,
-                    }
-                );
-
-            // Skriver kontrollens namn.
-            document
-                .fillColor("#212529")
-                .fontSize(10)
-                .font("Helvetica-Bold")
-                .text(
-                    result.name,
-                    textX,
-                    startY + 9,
-                    {
-                        width: textWidth,
-                    }
-                );
-
-            // Skriver meddelandet.
-            if (result.message) {
-
-                document
-                    .fillColor("#495057")
-                    .fontSize(8)
-                    .font("Helvetica")
-                    .text(
-                        result.message,
-                        textX,
-                        startY + titleHeight,
-                        {
-                            width: textWidth,
-                            lineGap: 2,
-                        }
-                    );
-            }
-
-            // Flyttar ner efter kortet.
-            document.y =
-                startY +
-                cardHeight +
-                8;
-
-            continue;
-        }
-
-
-        // ==========================================
-        // MYCKET LÅNGT RESULTAT
-        // ==========================================
-
-        // Om ett meddelande är extremt långt ska vi
-        // inte skapa ett enormt kort.
-        //
-        // I stället visar vi rubriken först och sedan
-        // texten direkt i dokumentet.
-
-        // Om vi inte har plats för rubriken på sidan
-        // börjar vi på en ny sida.
-        if (
-            document.y + 45 >
-            document.page.height - 60
-        ) {
-
-            document.addPage();
-
-            document
-                .fillColor("#17202a")
-                .fontSize(11)
-                .font("Helvetica-Bold")
-                .text(
-                    "QA-kontroller – fortsättning"
-                );
-
-            document.moveDown();
-        }
-
-        // Sparar startpositionen.
-        const startY =
-            document.y;
-
-        // Hämtar statusfärg.
-        const color =
-            getStatusColor(
-                result.status
-            );
-
-        // Skriver status.
-        document
-            .fillColor(color)
-            .fontSize(8)
-            .font("Helvetica-Bold")
-            .text(
-                result.status,
-                65,
-                startY + 2,
-                {
-                    width: 65,
-                }
-            );
-
-        // Skriver kontrollens namn.
-        document
-            .fillColor("#212529")
-            .fontSize(10)
-            .font("Helvetica-Bold")
-            .text(
-                result.name,
-                textX,
-                startY,
-                {
-                    width: textWidth,
-                }
-            );
-
-        // Flyttar ner efter rubriken.
-        document.y =
-            startY +
-            titleHeight +
-            8;
-
-        // Skriver den långa texten direkt.
-        //
-        // PDFKit får själv flytta texten till nästa sida
-        // när sidan tar slut.
-        if (result.message) {
-
-            document
-                .fillColor("#495057")
-                .fontSize(8)
-                .font("Helvetica")
-                .text(
-                    result.message,
-                    65,
-                    document.y,
-                    {
-                        width:
-                            document.page.width - 130,
-                        lineGap: 2,
-                    }
-                );
-        }
-
-        // Lite mellanrum innan nästa kontroll.
-        document.moveDown(1);
+    for (const result of results) {
+        addResultCard(document, result);
     }
 
-    // Återställer fonten efter alla resultat.
     document.font("Helvetica");
 }
 
+// ==========================================
+// PROBLEMÖVERSIKT
+// ==========================================
+
+// Visar endast WARNING och FAIL på första sidan.
+function addProblemSummary(
+    document: PDFKit.PDFDocument,
+    results: QACheckResult[]
+): void {
+    const problems = results.filter(
+        (result) =>
+            result.status === "WARNING" ||
+            result.status === "FAIL"
+    );
+
+    // Om inga problem finns visas ett positivt meddelande.
+    if (problems.length === 0) {
+        ensureSpace(document, 55);
+
+        const startY = document.y;
+
+        document
+            .roundedRect(
+                PAGE.margin,
+                startY,
+                PAGE.contentWidth,
+                42,
+                7
+            )
+            .fill(COLORS.passBackground);
+
+        document
+            .fillColor(COLORS.pass)
+            .font("Helvetica-Bold")
+            .fontSize(9)
+            .text(
+                "Inga problem identifierades",
+                65,
+                startY + 14
+            );
+
+        document.y = startY + 55;
+
+        return;
+    }
+
+    addSectionTitle(
+        document,
+        "Identifierade problem",
+        "WARNING och FAIL visas här för att göra de viktigaste problemen enkla att hitta."
+    );
+
+    for (const result of problems) {
+        addResultCard(
+            document,
+            result,
+            "Identifierade problem – fortsättning"
+        );
+    }
+}
 
 // ==========================================
 // AI-ANALYS
 // ==========================================
 
-// Skriver ut AI-analysen i PDF-rapporten.
+// Försöker dela upp AI-texten i sektioner.
+function parseAIAnalysis(
+    aiAnalysis: string
+): {
+    title: string;
+    body: string[];
+}[] {
+    const sections: {
+        title: string;
+        body: string[];
+    }[] = [];
+
+    let current:
+        | {
+              title: string;
+              body: string[];
+          }
+        | null = null;
+
+    const lines = aiAnalysis
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+
+    for (const line of lines) {
+        // Tar bort exempelvis "1. " från rubriker.
+        const cleanedHeading =
+            line.replace(
+                /^\d+[.)]\s*/,
+                ""
+            ).trim();
+
+        // Känner igen de rubriker som används av AI-prompten.
+        const isKnownHeading =
+            /^(?:Vad fungerar bra)$/i.test(
+                cleanedHeading
+            ) ||
+            /^(?:Viktigaste problemen)$/i.test(
+                cleanedHeading
+            ) ||
+            /^(?:Vad resultaten visar)$/i.test(
+                cleanedHeading
+            ) ||
+            /^(?:Rekommendationer)$/i.test(
+                cleanedHeading
+            );
+
+        if (isKnownHeading) {
+            current = {
+                title: cleanedHeading,
+                body: [],
+            };
+
+            sections.push(current);
+
+            continue;
+        }
+
+        // Om AI:n inte skickar någon rubrik
+        // läggs texten under "AI-analys".
+        if (!current) {
+            current = {
+                title: "AI-analys",
+                body: [],
+            };
+
+            sections.push(current);
+        }
+
+        current.body.push(line);
+    }
+
+    return sections;
+}
+
+// Returnerar om en AI-rad är en punktlista.
+function isBulletLine(line: string): boolean {
+    return /^[-*•]\s*/.test(line);
+}
+
+// Tar bort bullet-tecknet från AI-raden.
+function cleanBullet(line: string): string {
+    return line.replace(/^[-*•]\s*/, "").trim();
+}
+
+// ==========================================
+// AI-SEKTION
+// ==========================================
+
+// Lägger till en AI-sektion.
 //
-// Texten får flöda naturligt mellan sidor.
-// Vi använder därför inte ett stort bakgrundskort.
+// Viktig skillnad mot tidigare:
+// Texten delas upp rad för rad och sidan kontrolleras
+// under tiden. Det minskar risken för att text hamnar
+// utanför PDF-sidan.
+function addAISection(
+    document: PDFKit.PDFDocument,
+    title: string,
+    lines: string[]
+): void {
+    // Om sektionen inte har någon text skapas ändå ett litet kort.
+    if (lines.length === 0) {
+        ensureSpace(document, 70);
+
+        const startY = document.y;
+
+        document
+            .roundedRect(
+                PAGE.margin,
+                startY,
+                PAGE.contentWidth,
+                58,
+                8
+            )
+            .fill(COLORS.light);
+
+        document
+            .fillColor(COLORS.dark)
+            .font("Helvetica-Bold")
+            .fontSize(10.5)
+            .text(
+                title,
+                66,
+                startY + 13
+            );
+
+        document.y = startY + 70;
+
+        return;
+    }
+
+    // Bestämmer färg beroende på sektion.
+    const isProblemSection =
+        /problem|rekommend/i.test(title);
+
+    const color = isProblemSection
+        ? COLORS.warning
+        : COLORS.dark;
+
+    const background = isProblemSection
+        ? COLORS.warningBackground
+        : COLORS.light;
+
+    // Beräkna textens höjd.
+    document
+        .font("Helvetica")
+        .fontSize(8.5);
+
+    let estimatedHeight = 48;
+
+    for (const rawLine of lines) {
+        const line = cleanBullet(rawLine);
+
+        estimatedHeight +=
+            document.heightOfString(
+                line,
+                {
+                    width:
+                        PAGE.contentWidth - 48,
+                    lineGap: 3,
+                }
+            ) + 5;
+    }
+
+    // Begränsar höjden på ett enskilt kort.
+    const maxCardHeight = 650;
+
+    // Om hela sektionen inte får plats börjar vi på ny sida.
+    if (
+        document.y + Math.min(
+            estimatedHeight,
+            120
+        ) >
+        document.page.height -
+            PAGE.bottomMargin
+    ) {
+        document.addPage();
+
+        addContinuationHeader(
+            document,
+            "AI-analys – fortsättning"
+        );
+    }
+
+    let startY = document.y;
+
+    // Om sektionen är längre än en sida
+    // skapar vi flera mindre kort.
+    let currentCardHeight = 0;
+
+    const startSectionCard = () => {
+        startY = document.y;
+
+        currentCardHeight = 45;
+
+        // Bakgrunden börjar med en tillfällig höjd.
+        // Höjden justeras inte dynamiskt eftersom PDFKit
+        // inte behöver veta hela kortets höjd i förväg.
+        document
+            .roundedRect(
+                PAGE.margin,
+                startY,
+                PAGE.contentWidth,
+                maxCardHeight,
+                8
+            )
+            .fill(background);
+
+        document
+            .fillColor(color)
+            .font("Helvetica-Bold")
+            .fontSize(10.5)
+            .text(
+                title,
+                66,
+                startY + 13,
+                {
+                    width:
+                        PAGE.contentWidth - 32,
+                }
+            );
+
+        document.y = startY + 36;
+    };
+
+    startSectionCard();
+
+    for (const rawLine of lines) {
+        const bullet = isBulletLine(rawLine);
+        const line = cleanBullet(rawLine);
+
+        document
+            .font("Helvetica")
+            .fontSize(8.5);
+
+        const lineWidth = bullet
+            ? PAGE.contentWidth - 48
+            : PAGE.contentWidth - 32;
+
+        const lineHeight =
+            document.heightOfString(
+                line,
+                {
+                    width: lineWidth,
+                    lineGap: 3,
+                }
+            );
+
+        // Kontrollera om nästa rad får plats.
+        if (
+            currentCardHeight +
+                lineHeight +
+                10 >
+            maxCardHeight - 20
+        ) {
+            document.y =
+                startY +
+                currentCardHeight +
+                18;
+
+            document.addPage();
+
+            addContinuationHeader(
+                document,
+                "AI-analys – fortsättning"
+            );
+
+            startSectionCard();
+        }
+
+        const textY = document.y;
+
+        if (bullet) {
+            // Bullet.
+            document
+                .fillColor(color)
+                .font("Helvetica-Bold")
+                .fontSize(8.5)
+                .text(
+                    "•",
+                    68,
+                    textY,
+                    {
+                        width: 8,
+                        lineBreak: false,
+                    }
+                );
+
+            // Text.
+            document
+                .fillColor(COLORS.muted)
+                .font("Helvetica")
+                .fontSize(8.5)
+                .text(
+                    line,
+                    82,
+                    textY,
+                    {
+                        width:
+                            PAGE.contentWidth - 48,
+                        lineGap: 3,
+                    }
+                );
+        } else {
+            document
+                .fillColor(COLORS.muted)
+                .font("Helvetica")
+                .fontSize(8.5)
+                .text(
+                    line,
+                    66,
+                    textY,
+                    {
+                        width:
+                            PAGE.contentWidth - 32,
+                        lineGap: 3,
+                    }
+                );
+        }
+
+        currentCardHeight +=
+            lineHeight + 8;
+
+        document.y += 5;
+    }
+
+    document.y =
+        startY +
+        Math.min(
+            currentCardHeight + 15,
+            maxCardHeight + 20
+        );
+}
+
+// ==========================================
+// AI-ANALYS
+// ==========================================
+
 function addAIAnalysis(
     document: PDFKit.PDFDocument,
     aiAnalysis: string
 ): void {
-
-    // Skapar en ny sida för AI-analysen.
+    // AI-analysen börjar på en egen sida.
     document.addPage();
 
-    // Skriver rubriken.
-    addSectionTitle(
+    addContinuationHeader(
         document,
         "AI-analys"
     );
 
-    // Skriver en kort förklaring under rubriken.
     document
-        .fillColor("#6c757d")
-        .fontSize(9)
+        .fillColor(COLORS.secondaryText)
         .font("Helvetica")
+        .fontSize(8.5)
         .text(
-            "Automatiserad analys av QA-resultaten " +
-            "genererad av projektets lokala AI-modell."
-        );
-
-    // Lite mellanrum före själva analysen.
-    document.moveDown();
-
-    // Bredden som används för AI-texten.
-    const textWidth =
-        document.page.width - 130;
-
-    // Skriver analysen med normal text.
-    //
-    // PDFKit får själv flytta texten till nästa sida
-    // när det behövs.
-    document
-        .fillColor("#212529")
-        .fontSize(9)
-        .font("Helvetica")
-        .text(
-            aiAnalysis,
-            65,
+            "Automatiserad analys av QA-resultaten genererad av projektets lokala AI-modell.",
+            PAGE.margin,
             document.y,
             {
-                width: textWidth,
-                lineGap: 4,
+                width: PAGE.contentWidth,
             }
         );
 
-    // Lite extra mellanrum efter analysen.
-    document.moveDown(1);
+    document.y += 25;
 
-    // Återställer fonten.
-    document.font("Helvetica");
+    const sections =
+        parseAIAnalysis(aiAnalysis);
+
+    for (const section of sections) {
+        addAISection(
+            document,
+            section.title,
+            section.body
+        );
+
+        document.y += 8;
+    }
 }
 
+// ==========================================
+// PDF-SKRIVNING
+// ==========================================
+
+// Avslutar PDF-dokumentet och lägger till sidnummer.
+async function finishPDF(
+    document: PDFKit.PDFDocument,
+    stream: fs.WriteStream
+): Promise<void> {
+    // Hämtar alla sidor innan dokumentet avslutas.
+    const pages =
+        document.bufferedPageRange();
+
+    // Lägger till sidfot på varje sida.
+    for (
+        let index = 0;
+        index < pages.count;
+        index++
+    ) {
+        document.switchToPage(
+            pages.start + index
+        );
+
+        addFooter(
+            document,
+            index + 1
+        );
+    }
+
+    // Avslutar PDF-filen.
+    document.end();
+
+    // Väntar tills filen faktiskt har skrivits klart.
+    await new Promise<void>(
+        (resolve, reject) => {
+            stream.on(
+                "finish",
+                () => resolve()
+            );
+
+            stream.on(
+                "error",
+                (error) => reject(error)
+            );
+        }
+    );
+}
 
 // ==========================================
-// VANLIG PDF-RAPPORT
+// REPORTS-MAPP
 // ==========================================
 
-export async function createPDFReport(
-    data: PDFReportData
-): Promise<string> {
-
-    // Använder operativsystemets temporära mapp.
+// Skapar mappen där PDF-rapporter sparas.
+function createReportsDirectory(): string {
     const reportsDirectory =
         path.join(
             os.tmpdir(),
             "website-qa-system"
         );
 
-    // Skapar mappen om den inte finns.
-    if (!fs.existsSync(reportsDirectory)) {
-
+    if (
+        !fs.existsSync(
+            reportsDirectory
+        )
+    ) {
         fs.mkdirSync(
             reportsDirectory,
             {
@@ -1006,37 +1231,52 @@ export async function createPDFReport(
         );
     }
 
-    // Standardnamn om hostname inte kan läsas.
-    let hostname =
-        "website";
+    return reportsDirectory;
+}
+
+// ==========================================
+// VANLIG PDF-RAPPORT
+// ==========================================
+
+export async function createPDFReport(
+    data: PDFReportData
+): Promise<string> {
+    const reportsDirectory =
+        createReportsDirectory();
+
+    // Försöker hämta hostname från URL:en.
+    let hostname = "website";
 
     try {
-
-        // Hämtar hostname från URL:en.
         hostname =
             new URL(
                 data.websiteUrl
             ).hostname;
-
     } catch {
-        // Behåller standardnamnet.
+        // Standardnamnet används om URL:en inte kan tolkas.
     }
 
-    // Skapar PDF-filens sökväg.
     const filePath =
         path.join(
             reportsDirectory,
             `QA-Report-${hostname}.pdf`
         );
 
-    // Skapar PDF-dokumentet.
+    // Skapar själva PDF-dokumentet.
     const document =
         new PDFDocument({
-            margin: 50,
-
-            // Gör sidorna tillgängliga
-            // när sidfötterna ska läggas till.
+            margin: PAGE.margin,
             bufferPages: true,
+            size: "A4",
+
+            info: {
+                Title:
+                    `Website QA Report - ${hostname}`,
+                Author:
+                    "Website QA System",
+                Subject:
+                    "Automatiserad QA-rapport",
+            },
         });
 
     // Skapar filströmmen.
@@ -1045,29 +1285,24 @@ export async function createPDFReport(
             filePath
         );
 
-    // Kopplar PDF-dokumentet till filen.
     document.pipe(stream);
-
 
     // ==========================================
     // FÖRSTASIDA
     // ==========================================
 
-    // Lägger till rapportens header.
     addReportHeader(
         document,
         data.websiteUrl,
         "Automatiserad QA-rapport"
     );
 
-    // Lägger till webbplatsinformation.
     addWebsiteInformation(
         document,
         data.websiteUrl
     );
 
-
-    // Hämtar statistik.
+    // Räknar resultaten.
     const counts =
         getResultCounts(
             data.results
@@ -1079,11 +1314,11 @@ export async function createPDFReport(
             data.results
         );
 
-
-    // Sammanfattningssektion.
+    // Sammanfattning.
     addSectionTitle(
         document,
-        "Sammanfattning"
+        "Sammanfattning",
+        "En snabb översikt av resultatet från samtliga QA-kontroller."
     );
 
     // Övergripande status.
@@ -1092,174 +1327,74 @@ export async function createPDFReport(
         overallStatus
     );
 
-
-    // Bredd på statuskorten.
-    const cardWidth =
-        150;
-
-    // Avstånd mellan statuskorten.
-    const cardGap =
-        17;
-
-    // Y-position för korten.
-    const cardsY =
-        document.y;
-
-
-    // PASS-kort.
-    addStatusCard(
+    // PASS / WARNING / FAIL.
+    addSummaryCards(
         document,
-        50,
-        cardsY,
-        cardWidth,
-        70,
-        "PASS",
-        counts.pass,
-        "PASS"
+        counts
     );
 
-    // WARNING-kort.
-    addStatusCard(
-        document,
-        50 +
-        cardWidth +
-        cardGap,
-        cardsY,
-        cardWidth,
-        70,
-        "WARNING",
-        counts.warning,
-        "WARNING"
-    );
-
-    // FAIL-kort.
-    addStatusCard(
-        document,
-        50 +
-        (cardWidth + cardGap) * 2,
-        cardsY,
-        cardWidth,
-        70,
-        "FAIL",
-        counts.fail,
-        "FAIL"
-    );
-
-    // Flyttar ner efter korten.
-    document.y =
-        cardsY + 90;
-
-
-    // QA-kontroller.
-    addSectionTitle(
-        document,
-        "QA-kontroller"
-    );
-
-    // Skriver ut alla QA-resultat.
-    addQAResults(
+    // Problem visas direkt på första sidan.
+    addProblemSummary(
         document,
         data.results
     );
 
+    // ==========================================
+    // QA-KONTROLLER
+    // ==========================================
 
-    // AI-analys om den finns.
-    if (data.aiAnalysis) {
+    document.addPage();
 
+    addContinuationHeader(
+        document,
+        "QA-kontroller"
+    );
+
+    addSectionTitle(
+        document,
+        "QA-kontroller",
+        `${data.results.length} automatiserade kontroller genomfördes.`
+    );
+
+    addAllQAResults(
+        document,
+        data.results
+    );
+
+    // ==========================================
+    // AI-ANALYS
+    // ==========================================
+
+    if (
+        data.aiAnalysis &&
+        data.aiAnalysis.trim().length > 0
+    ) {
         addAIAnalysis(
             document,
             data.aiAnalysis
         );
     }
 
-
-    // ==========================================
-    // SIDFÖTTER
-    // ==========================================
-
-    // Hämtar PDF-sidorna innan sidfötterna läggs till.
-    const pages =
-        document.bufferedPageRange();
-
-    // Går igenom alla sidor.
-    for (
-        let index = 0;
-        index < pages.count;
-        index++
-    ) {
-
-        // Hoppar till aktuell sida.
-        document.switchToPage(
-            pages.start + index
-        );
-
-        // Lägger till sidfot.
-        addFooter(
-            document,
-            index + 1
-        );
-    }
-
-
-    // Avslutar PDF-dokumentet.
-    document.end();
-
-
-    // Väntar tills PDF-filen är färdigskriven.
-    await new Promise<void>(
-        (
-            resolve,
-            reject
-        ) => {
-
-            // Körs när filen är färdig.
-            stream.on(
-                "finish",
-                () => resolve()
-            );
-
-            // Hanterar skrivfel.
-            stream.on(
-                "error",
-                (error) =>
-                    reject(error)
-            );
-        }
+    // Avsluta PDF.
+    await finishPDF(
+        document,
+        stream
     );
 
-
-    // Returnerar sökvägen till PDF-filen.
     return filePath;
 }
 
-
 // ==========================================
-// SAMMANSTÄLLD CSV-PDF
+// CSV-PDF
 // ==========================================
 
 export async function createCSVPDFReport(
     reports: CSVPDFReportItem[]
 ): Promise<string> {
-
-    // Använder operativsystemets temporära mapp.
     const reportsDirectory =
-        path.join(
-            os.tmpdir(),
-            "website-qa-system"
-        );
+        createReportsDirectory();
 
-    // Skapar mappen om den inte finns.
-    if (!fs.existsSync(reportsDirectory)) {
-
-        fs.mkdirSync(
-            reportsDirectory,
-            {
-                recursive: true,
-            }
-        );
-    }
-
-    // Skapar en unik tidsstämpel.
+    // Skapar unik timestamp.
     const timestamp =
         new Date()
             .toISOString()
@@ -1268,160 +1403,174 @@ export async function createCSVPDFReport(
                 "-"
             );
 
-    // Skapar sökvägen till CSV-PDF:en.
     const filePath =
         path.join(
             reportsDirectory,
             `QA-Report-CSV-${timestamp}.pdf`
         );
 
-    // Skapar PDF-dokumentet.
+    // Skapar PDF.
     const document =
         new PDFDocument({
-            margin: 50,
+            margin: PAGE.margin,
             bufferPages: true,
+            size: "A4",
+
+            info: {
+                Title:
+                    "Website QA System - CSV-rapport",
+                Author:
+                    "Website QA System",
+                Subject:
+                    "Sammanställd QA-rapport",
+            },
         });
 
-    // Skapar filströmmen.
     const stream =
         fs.createWriteStream(
             filePath
         );
 
-    // Kopplar PDF-dokumentet till filen.
     document.pipe(stream);
 
-
     // ==========================================
-    // FÖRSTASIDA
+    // CSV-ÖVERSIKT
     // ==========================================
 
-    // Header för CSV-rapporten.
     addReportHeader(
         document,
         "CSV-import",
         "Sammanställd QA-rapport"
     );
 
-
-    // Räknar lyckade webbplatser.
+    // Räknar lyckade och misslyckade webbplatser.
     const completed =
         reports.filter(
             (report) =>
                 report.success
         ).length;
 
-    // Räknar misslyckade webbplatser.
     const failed =
-        reports.filter(
-            (report) =>
-                !report.success
-        ).length;
+        reports.length -
+        completed;
 
-
-    // Översiktssektion.
     addSectionTitle(
         document,
-        "Översikt"
+        "Översikt",
+        "Sammanställning av webbplatser som analyserats via CSV-import."
     );
 
+    ensureSpace(
+        document,
+        120
+    );
 
-    // Sparar positionen för översiktsrutan.
     const overviewY =
         document.y;
 
-    // Skapar översiktsruta.
+    const overviewHeight =
+        88;
+
+    // Översiktskort.
     document
         .roundedRect(
-            50,
+            PAGE.margin,
             overviewY,
-            document.page.width - 100,
-            90,
+            PAGE.contentWidth,
+            overviewHeight,
             8
         )
-        .fill("#f7f9fb");
+        .fill(COLORS.light);
 
-
-    // Antal webbplatser.
+    // Totalt antal.
     document
-        .fillColor("#212529")
-        .fontSize(10)
+        .fillColor(
+            COLORS.secondaryText
+        )
         .font("Helvetica-Bold")
+        .fontSize(8)
         .text(
-            "Antal webbplatser",
+            "WEBBPLATSER",
             70,
-            overviewY + 17
+            overviewY + 15
         );
 
     document
-        .fillColor("#17202a")
+        .fillColor(
+            COLORS.dark
+        )
+        .font("Helvetica-Bold")
         .fontSize(20)
         .text(
-            String(reports.length),
+            String(
+                reports.length
+            ),
             70,
-            overviewY + 34
+            overviewY + 31
         );
 
-
-    // Antal klara.
+    // Klara.
     document
-        .fillColor("#198754")
-        .fontSize(9)
+        .fillColor(
+            COLORS.pass
+        )
         .font("Helvetica-Bold")
+        .fontSize(8)
         .text(
-            "Klara",
-            230,
-            overviewY + 17
+            "KLARA",
+            225,
+            overviewY + 15
         );
 
     document
         .fontSize(18)
         .text(
-            String(completed),
-            230,
-            overviewY + 34
+            String(
+                completed
+            ),
+            225,
+            overviewY + 31
         );
 
-
-    // Antal misslyckade.
+    // Misslyckade.
     document
-        .fillColor("#dc3545")
-        .fontSize(9)
+        .fillColor(
+            COLORS.fail
+        )
+        .fontSize(8)
         .text(
-            "Misslyckade",
+            "MISSLYCKADE",
             350,
-            overviewY + 17
+            overviewY + 15
         );
 
     document
         .fontSize(18)
         .text(
-            String(failed),
+            String(
+                failed
+            ),
             350,
-            overviewY + 34
+            overviewY + 31
         );
-
 
     // Datum.
     document
-        .fillColor("#6c757d")
-        .fontSize(8)
+        .fillColor(
+            COLORS.secondaryText
+        )
         .font("Helvetica")
+        .fontSize(8)
         .text(
-            `Rapport skapad: ${
-                new Date().toLocaleString(
-                    "sv-SE"
-                )
-            }`,
+            `Rapport skapad: ${getReportDate()}`,
             70,
-            overviewY + 65
+            overviewY + 66
         );
 
-
-    // Flyttar ner efter översiktsrutan.
     document.y =
-        overviewY + 110;
-
+        overviewY +
+        overviewHeight +
+        20;
 
     // ==========================================
     // RESULTAT PER WEBBPLATS
@@ -1429,105 +1578,104 @@ export async function createCSVPDFReport(
 
     addSectionTitle(
         document,
-        "Resultat per webbplats"
+        "Resultat per webbplats",
+        "Översikt över status och antal kontroller för varje webbplats."
     );
 
-
-    // Går igenom alla webbplatser.
     for (
         const report of reports
     ) {
+        // --------------------------------------
+        // MISSLYCKAD SKANNING
+        // --------------------------------------
 
-        // Hanterar misslyckad skanning.
         if (!report.success) {
-
-            // Texten som ska visas i felrutan.
             const errorText =
                 `Fel: ${
                     report.error ??
                     "Okänt fel"
                 }`;
 
-            // Räknar ut höjden på feltexten.
             document
                 .font("Helvetica")
-                .fontSize(8);
+                .fontSize(8.5);
 
-            const errorTextHeight =
-                document.heightOfString(
-                    errorText,
-                    {
-                        width:
-                            document.page.width - 175,
-                    }
-                );
-
-            // Dynamisk höjd för felrutan.
-            const errorCardHeight =
+            const errorHeight =
                 Math.max(
-                    60,
-                    errorTextHeight + 42
+                    58,
+                    document.heightOfString(
+                        errorText,
+                        {
+                            width:
+                                PAGE.contentWidth -
+                                32,
+                        }
+                    ) + 40
                 );
 
-            // Kontrollerar om rutan får plats.
             if (
                 document.y +
-                errorCardHeight >
-                document.page.height - 60
+                    errorHeight >
+                document.page.height -
+                    PAGE.bottomMargin
             ) {
-
                 document.addPage();
 
-                addSectionTitle(
+                addContinuationHeader(
                     document,
                     "Resultat per webbplats – fortsättning"
                 );
             }
 
-            // Sparar positionen.
             const startY =
                 document.y;
 
-            // Skapar FAIL-kort.
             document
                 .roundedRect(
-                    50,
+                    PAGE.margin,
                     startY,
-                    document.page.width - 100,
-                    errorCardHeight,
+                    PAGE.contentWidth,
+                    errorHeight,
                     7
                 )
-                .fill("#fdecec");
+                .fill(
+                    COLORS.failBackground
+                );
 
-            // Skriver FAIL-status.
             document
-                .fillColor("#dc3545")
-                .fontSize(10)
+                .fillColor(
+                    COLORS.fail
+                )
                 .font("Helvetica-Bold")
+                .fontSize(9)
                 .text(
                     "FAIL",
                     65,
                     startY + 12
                 );
 
-            // Skriver URL.
             document
-                .fillColor("#212529")
+                .fillColor(
+                    COLORS.text
+                )
+                .font("Helvetica-Bold")
                 .fontSize(9)
-                .font("Helvetica")
                 .text(
                     report.websiteUrl,
                     110,
-                    startY + 12,
+                    startY + 11,
                     {
                         width:
-                            document.page.width - 175,
+                            PAGE.contentWidth -
+                            125,
                     }
                 );
 
-            // Skriver felmeddelande.
             document
-                .fillColor("#6c757d")
+                .fillColor(
+                    COLORS.muted
+                )
+                .font("Helvetica")
                 .fontSize(8)
                 .text(
                     errorText,
@@ -1535,331 +1683,311 @@ export async function createCSVPDFReport(
                     startY + 29,
                     {
                         width:
-                            document.page.width - 175,
+                            PAGE.contentWidth -
+                            125,
+                        lineGap: 2,
                     }
                 );
 
-            // Flyttar ner efter den dynamiska rutan.
             document.y =
                 startY +
-                errorCardHeight +
+                errorHeight +
                 10;
 
             continue;
         }
 
+        // --------------------------------------
+        // LYCKAD SKANNING
+        // --------------------------------------
 
-        // Hämtar statistik.
         const counts =
             getResultCounts(
                 report.results
             );
 
-        // Hämtar övergripande status.
         const overallStatus =
             getOverallStatus(
                 report.results
             );
 
-
-        // Hämtar statusfärg.
-        const statusColor =
+        const color =
             getStatusColor(
                 overallStatus
             );
 
-        // Hämtar statusbakgrund.
-        const statusBackground =
+        const background =
             getStatusBackground(
                 overallStatus
             );
 
+        const cardHeight =
+            82;
 
-        // Sparar positionen för webbplatskortet.
+        if (
+            document.y +
+                cardHeight >
+            document.page.height -
+                PAGE.bottomMargin
+        ) {
+            document.addPage();
+
+            addContinuationHeader(
+                document,
+                "Resultat per webbplats – fortsättning"
+            );
+        }
+
         const startY =
             document.y;
 
-        // Skapar webbplatskort.
         document
             .roundedRect(
-                50,
+                PAGE.margin,
                 startY,
-                document.page.width - 100,
-                82,
+                PAGE.contentWidth,
+                cardHeight,
                 7
             )
-            .fill(statusBackground);
+            .fill(background);
 
-
-        // Skriver status.
+        // Status.
         document
-            .fillColor(statusColor)
-            .fontSize(9)
+            .fillColor(color)
             .font("Helvetica-Bold")
+            .fontSize(9)
             .text(
                 overallStatus,
                 65,
-                startY + 13
+                startY + 12
             );
 
-
-        // Skriver URL.
+        // URL.
         document
-            .fillColor("#212529")
-            .fontSize(10)
+            .fillColor(
+                COLORS.text
+            )
             .font("Helvetica-Bold")
+            .fontSize(9.5)
             .text(
                 report.websiteUrl,
                 135,
-                startY + 12,
+                startY + 11,
                 {
                     width:
-                        document.page.width - 200,
+                        PAGE.contentWidth -
+                        150,
                 }
             );
 
-
-        // PASS-resultat.
+        // PASS.
         document
-            .fillColor("#198754")
-            .fontSize(8)
+            .fillColor(
+                COLORS.pass
+            )
             .font("Helvetica")
+            .fontSize(8)
             .text(
                 `PASS: ${counts.pass}`,
                 135,
-                startY + 32
+                startY + 34
             );
 
-
-        // WARNING-resultat.
+        // WARNING.
         document
-            .fillColor("#d97706")
+            .fillColor(
+                COLORS.warning
+            )
             .text(
                 `WARNING: ${counts.warning}`,
                 220,
-                startY + 32
+                startY + 34
             );
 
-
-        // FAIL-resultat.
+        // FAIL.
         document
-            .fillColor("#dc3545")
+            .fillColor(
+                COLORS.fail
+            )
             .text(
                 `FAIL: ${counts.fail}`,
-                330,
-                startY + 32
+                335,
+                startY + 34
             );
-
 
         // Antal kontroller.
         document
-            .fillColor("#6c757d")
-            .fontSize(8)
+            .fillColor(
+                COLORS.secondaryText
+            )
             .text(
-                `Antal kontroller: ${
-                    report.results.length
-                }`,
+                `Antal kontroller: ${report.results.length}`,
                 135,
-                startY + 51
+                startY + 55
             );
 
-
-        // Flyttar ner efter webbplatskortet.
         document.y =
-            startY + 92;
+            startY +
+            cardHeight +
+            10;
     }
 
-
     // ==========================================
-    // DETALJERAD RAPPORT PER WEBBPLATS
+    // DETALJER PER WEBBPLATS
     // ==========================================
 
     for (
         const report of reports
     ) {
-
-        // Varje webbplats får en egen sida.
         document.addPage();
 
-
-        // Lägger till header.
         addReportHeader(
             document,
             report.websiteUrl,
             "Detaljerad QA-rapport"
         );
 
+        // --------------------------------------
+        // MISSLYCKAD SKANNING
+        // --------------------------------------
 
-        // Hanterar misslyckad skanning.
         if (!report.success) {
-
             addSectionTitle(
                 document,
                 "Skanningen misslyckades"
             );
 
-            // Texten som ska visas.
             const errorText =
                 report.error ??
                 "Okänt fel";
 
-            // Räknar ut textens höjd.
-            document
-                .font("Helvetica")
-                .fontSize(9);
-
-            const errorTextHeight =
-                document.heightOfString(
-                    errorText,
-                    {
-                        width:
-                            document.page.width - 136,
-                    }
-                );
-
-            // Dynamisk höjd för felrutan.
-            const errorBoxHeight =
+            const errorHeight =
                 Math.max(
                     75,
-                    errorTextHeight + 55
+                    document.heightOfString(
+                        errorText,
+                        {
+                            width:
+                                PAGE.contentWidth -
+                                36,
+                        }
+                    ) + 55
                 );
 
-            // Sparar positionen.
             const startY =
                 document.y;
 
-            // Skapar felruta.
             document
                 .roundedRect(
-                    50,
+                    PAGE.margin,
                     startY,
-                    document.page.width - 100,
-                    errorBoxHeight,
+                    PAGE.contentWidth,
+                    errorHeight,
                     8
                 )
-                .fill("#fdecec");
+                .fill(
+                    COLORS.failBackground
+                );
 
-            // Skriver FAIL.
             document
-                .fillColor("#dc3545")
-                .fontSize(12)
+                .fillColor(
+                    COLORS.fail
+                )
                 .font("Helvetica-Bold")
+                .fontSize(12)
                 .text(
                     "FAIL",
                     68,
-                    startY + 15
+                    startY + 14
                 );
 
-            // Skriver felmeddelandet.
             document
-                .fillColor("#495057")
-                .fontSize(9)
+                .fillColor(
+                    COLORS.muted
+                )
                 .font("Helvetica")
+                .fontSize(9)
                 .text(
                     errorText,
                     68,
-                    startY + 35,
+                    startY + 36,
                     {
                         width:
-                            document.page.width - 136,
+                            PAGE.contentWidth -
+                            36,
+                        lineGap: 3,
                     }
                 );
 
             continue;
         }
 
+        // --------------------------------------
+        // SAMMANFATTNING
+        // --------------------------------------
 
-        // Hämtar statistik.
         const counts =
             getResultCounts(
                 report.results
             );
 
-        // Hämtar övergripande status.
         const overallStatus =
             getOverallStatus(
                 report.results
             );
 
-
-        // Sammanfattning.
         addSectionTitle(
             document,
-            "Sammanfattning"
+            "Sammanfattning",
+            `${report.results.length} automatiserade kontroller genomfördes.`
         );
 
-        // Övergripande status.
         addOverallStatusCard(
             document,
             overallStatus
         );
 
-
-        // Position för statuskorten.
-        const detailCardsY =
-            document.y;
-
-
-        // PASS.
-        addStatusCard(
+        addSummaryCards(
             document,
-            50,
-            detailCardsY,
-            150,
-            70,
-            "PASS",
-            counts.pass,
-            "PASS"
+            counts
         );
 
-
-        // WARNING.
-        addStatusCard(
+        addProblemSummary(
             document,
-            217,
-            detailCardsY,
-            150,
-            70,
-            "WARNING",
-            counts.warning,
-            "WARNING"
+            report.results
         );
 
+        // --------------------------------------
+        // QA-KONTROLLER
+        // --------------------------------------
 
-        // FAIL.
-        addStatusCard(
+        document.addPage();
+
+        addReportHeader(
             document,
-            384,
-            detailCardsY,
-            150,
-            70,
-            "FAIL",
-            counts.fail,
-            "FAIL"
+            report.websiteUrl,
+            "QA-kontroller"
         );
 
-
-        // Flyttar ner efter korten.
-        document.y =
-            detailCardsY + 90;
-
-
-        // QA-kontroller.
         addSectionTitle(
             document,
             "QA-kontroller"
         );
 
-        // Skriver alla QA-resultat.
-        addQAResults(
+        addAllQAResults(
             document,
             report.results
         );
 
+        // --------------------------------------
+        // AI-ANALYS
+        // --------------------------------------
 
-        // AI-analys.
-        if (report.aiAnalysis) {
-
+        if (
+            report.aiAnalysis &&
+            report.aiAnalysis.trim()
+                .length > 0
+        ) {
             addAIAnalysis(
                 document,
                 report.aiAnalysis
@@ -1867,62 +1995,11 @@ export async function createCSVPDFReport(
         }
     }
 
-
-    // ==========================================
-    // SIDFÖTTER
-    // ==========================================
-
-    // Hämtar alla PDF-sidor innan sidfötterna läggs till.
-    const pages =
-        document.bufferedPageRange();
-
-    // Lägger till sidfot på alla sidor.
-    for (
-        let index = 0;
-        index < pages.count;
-        index++
-    ) {
-
-        // Hoppar till aktuell sida.
-        document.switchToPage(
-            pages.start + index
-        );
-
-        // Lägger till professionell sidfot.
-        addFooter(
-            document,
-            index + 1
-        );
-    }
-
-
-    // Avslutar PDF-filen.
-    document.end();
-
-
-    // Väntar tills PDF-filen är färdigskriven.
-    await new Promise<void>(
-        (
-            resolve,
-            reject
-        ) => {
-
-            // Lyckad skrivning.
-            stream.on(
-                "finish",
-                () => resolve()
-            );
-
-            // Fel under skrivningen.
-            stream.on(
-                "error",
-                (error) =>
-                    reject(error)
-            );
-        }
+    // Avsluta PDF.
+    await finishPDF(
+        document,
+        stream
     );
 
-
-    // Returnerar PDF-filens sökväg.
     return filePath;
 }
