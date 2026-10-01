@@ -1,482 +1,786 @@
 # Website QA System
 
-Ett automatiserat QA-system för att analysera och testa webbplatser med Playwright, TypeScript och lokal AI-analys med Ollama.
+Ett automatiserat kvalitetssäkringssystem för analys, testning och dokumentation av webbplatser baserat på Playwright, TypeScript, Node.js och lokal AI-analys via Ollama.
 
-Systemet kan analysera en webbplats och kontrollera bland annat:
+Systemet samlar flera QA-kontroller i ett enhetligt, automatiserat flöde. Utifrån en angiven målwebbplats crawlar systemet sidstrukturen, genomför funktionella och tekniska valideringar, klassificerar resultaten som `PASS`, `WARNING` eller `FAIL`, bearbetar datan via ett lokalt AI-analyslager och genererar en strukturerad PDF-rapport.
 
-- Webbplatsens sidor och statuskoder
-- Interna och externa länkar
-- Bilder
-- Formulär och formulärfält
-- Obligatoriska fält
-- E-post- och telefonvalidering
-- Navigation
-- CTA-knappar
-- Sociala medier
-- Google Maps
-- Google Business Profile
-- SEO
-- Prestanda
-- Responsivitet
-- Cookie/GDPR-sidor
-- HTTPS och säkerhetsrelaterade kontroller
-- Alternativa domäner
-- Stavnings- och textkontroller
-- AI-baserad sammanfattning av QA-resultatet
+Projektet tillhandahåller även ett REST API och en Chrome Extension för integrerad interaktion.
 
-## Teknik
+Projektet är utvecklat som ett större praktiskt projekt inom IT-testning och testautomation och demonstrerar användning av QA-metodik, automatiserade tester, webbläsarautomation, API:er, rapportering och lokal AI.
 
-Projektet använder bland annat:
+---
 
-- TypeScript
-- Playwright
-- Node.js
-- Express
-- Ollama
-- Qwen3 4B
-- Google PageSpeed Insights API
-- PDF-rapportering
+## Innehåll
+
+- [Vad är Website QA System?](#vad-är-website-qa-system)
+- [Huvudfunktioner](#huvudfunktioner)
+- [Systemarkitektur & Flöde](#systemarkitektur--flöde)
+- [Teknikstack](#teknikstack)
+- [Installation](#installation)
+- [Konfiguration](#konfiguration)
+- [Ollama och lokal AI](#ollama-och-lokal-ai)
+- [Körning av QA-systemet](#körning-av-qa-systemet)
+- [CSV-scanning](#csv-scanning)
+- [Automatiserade tester](#automatiserade-tester)
+- [TypeScript-kontroll](#typescript-kontroll)
+- [AI-analyslager](#ai-analyslager)
+- [REST API](#rest-api)
+- [Chrome Extension](#chrome-extension)
+- [PDF-rapportering](#pdf-rapportering)
+- [Projektstruktur](#projektstruktur)
+- [Miljövariabler](#miljövariabler)
+- [Säkerhet](#säkerhet)
+- [Distribution till ny miljö](#distribution-till-ny-miljö)
+- [Felsökning](#felsökning)
+- [Utvecklingsflöde & Git](#utvecklingsflöde--git)
+- [Klassificering av QA-resultat](#klassificering-av-qa-resultat)
+- [Teststrategi](#teststrategi)
+- [Projektets mål & Syfte](#projektets-mål--syfte)
+
+---
+
+## Vad är Website QA System?
+
+Website QA System automatiserar återkommande kontrollmoment vid webbplatstestning.
+
+Systemet kan bland annat:
+
+- crawla en webbplats och identifiera sidor
+- kontrollera HTTP-statuskoder
+- analysera interna och externa länkar
+- kontrollera bilder och bildresurser
+- identifiera formulär och formulärfält
+- testa obligatoriska fält
+- validera e-post- och telefonfält
+- kontrollera navigation och CTA-länkar
+- analysera SEO-relaterade element
+- kontrollera responsivitet med Playwright
+- mäta prestanda med Google PageSpeed Insights
+- kontrollera HTTPS och vissa säkerhetsrelaterade aspekter
+- identifiera sociala medier
+- kontrollera Google Maps och Google Business Profile
+- identifiera Cookiepolicy och Integritetspolicy
+- importera flera webbplatser via CSV
+- klassificera resultat som PASS, WARNING eller FAIL
+- analysera resultat med lokal AI via Ollama
+- generera PDF-rapporter
+
+---
+
+## Systemarkitektur & Flöde
+
+Det övergripande flödet ser ut så här:
+
+```text
+Webbplats (URL)
+    |
+    v
+Crawler (sidadresser & struktur)
+    |
+    v
+QA-testmotor
+    |-- Sidor & HTTP-status
+    |-- Länkar (interna/externa)
+    |-- Bildresurser
+    |-- Formulär & validering
+    |-- SEO-metadata (H1, Meta)
+    |-- Responsivitet (mobilvy via Playwright)
+    |-- Prestanda (Google PageSpeed API)
+    |-- Säkerhet & HTTPS
+    |-- Sociala medier & Google Profiles
+    |-- GDPR / Cookiepolicy
+    |
+    v
+Klassificering (PASS / WARNING / FAIL)
+    |
+    v
+Lokal AI-analys (Ollama / Qwen3 4B)
+    |
+    v
+PDF-rapportgenerering
+```
+
+När Chrome Extension används:
+
+```text
+Chrome Extension
+    |
+    v
+REST API (Express)
+    |
+    v
+QA-motor
+    |
+    v
+Ollama AI
+    |
+    v
+PDF-rapport
+```
+
+AI-lagret är kompletterande. De faktiska QA-kontrollerna genomförs av systemets deterministiska testlogik.
+
+---
+
+## Huvudfunktioner
+
+### Webbcrawling & Länkvalidering
+
+- Automatisk crawling av interna webbadresser och strukturanalys.
+- Statuskodskontroll för interna och externa länkar.
+- Detektering av trasiga länkar.
+- Kontroll av omdirigeringar och avvikande URL-beteenden.
+- Identifiering av interna och externa länkrelationer.
+
+### Formulär & Validering
+
+- Identifiering av formulär och formulärelement.
+- Identifiering av inmatningsfält.
+- Kontroll av obligatoriska fält.
+- Testning av e-postfält med ogiltiga värden.
+- Testning av telefonfält med ogiltiga värden.
+- Identifiering av formulär som accepterar felaktig input.
+
+### Responsivitet & UI
+
+- Webbläsarautomation med Playwright.
+- Testning i mobila viewport-storlekar.
+- Kontroll av responsivitet på crawlande sidor.
+- Identifiering och verifiering av CTA-länkar.
+- Kontroll av navigation och användarflöden.
+
+### Prestanda, SEO & Säkerhet
+
+- Integration med Google PageSpeed Insights API.
+- Mätning av Core Web Vitals, bland annat LCP och CLS.
+- Kontroll av FCP.
+- Kontroll av H1-struktur.
+- Identifiering av saknade eller problematiska meta-beskrivningar.
+- Kontroll av HTTPS.
+- Kontroll av vissa säkerhetsrelaterade webbplatsförhållanden.
+
+### Externa integrationer & GDPR
+
+- Identifiering av Google Maps-komponenter.
+- Kontroll av Google Business Profile.
+- Matchning mellan företagsnamn och externa profiler.
+- Kontroll av länkar till sociala medier som Facebook, LinkedIn, Instagram och YouTube.
+- Sökning efter Cookiepolicy.
+- Sökning efter Integritetspolicy/GDPR-relaterade sidor.
+- Kontroll av alternativa domäner och företagsnamn.
+
+### Rapportering
+
+- Sammanställning av testresultat.
+- PASS/WARNING/FAIL-klassificering.
+- AI-genererad analys.
+- PDF-rapport med testresultat och rekommendationer.
+- CSV-baserad rapportering för flera webbplatser.
+
+---
+
+## Teknikstack
+
+| Område | Teknik |
+|---|---|
+| Runtime | Node.js |
+| Programmeringsspråk | TypeScript |
+| Webbläsarautomation | Playwright |
+| Testramverk | Vitest, Playwright Test |
+| API-ramverk | Express.js |
+| Lokal AI | Ollama |
+| AI-modell | Qwen3 4B |
+| Externt API | Google PageSpeed Insights API |
+| Rapportering | PDF-generering |
+| Klientgränssnitt | Chrome Extension, Manifest V3 |
+| Versionshantering | Git & GitHub |
+
+---
 
 ## Installation
 
-### 1. Klona projektet
+### Förutsättningar
 
+Säkerställ att följande är installerat:
+
+- Git
+- Node.js
+- npm
+- Google Chrome
+- Ollama, om lokal AI-analys ska användas
+
+### Installationssteg
+
+1. Klona repot:
+
+```bash
 git clone https://github.com/moazam33r/website-qa-system.git
 cd website-qa-system
+```
 
-### 2. Installera projektets paket
+2. Installera projektets beroenden:
 
+```bash
 npm install
+```
 
-### 3. Installera Playwrights webbläsare
+3. Installera Playwright-webbläsare:
 
+```bash
 npx playwright install
+```
+
+4. Kontrollera TypeScript:
+
+```bash
+npx tsc --noEmit
+```
+
+---
 
 ## Konfiguration
 
-Projektet använder en lokal .env-fil för inställningar.
+Skapa en `.env`-fil i projektets rotkatalog.
 
-Skapa .env från exempelkonfigurationen:
+Du kan utgå från `.env.example`.
 
+### Windows PowerShell
+
+```powershell
 Copy-Item .env.example .env
+```
 
-Öppna sedan .env.
+### Linux / macOS
+
+```bash
+cp .env.example .env
+```
 
 Exempel:
 
-# Google PageSpeed Insights API-nyckel.
-# Lämna tom om PageSpeed-kontrollen inte ska användas.
-PAGESPEED_API_KEY=
+```env
+# Mål-URL för direktkörning
+TARGET_URL=https://digitalkontakt.se/
 
-# Adressen till den lokala Ollama-servern.
+# Google PageSpeed Insights API-nyckel
+PAGESPEED_API_KEY=your_api_key_here
+
+# Lokal Ollama-server
 OLLAMA_HOST=http://127.0.0.1:11434
 
-# AI-modellen som används av QA-systemet.
+# AI-modell
 OLLAMA_MODEL=qwen3:4b
 
-# Maximal tid för ett Ollama-anrop i millisekunder.
-# 180000 = 3 minuter.
+# Timeout för AI-anrop i millisekunder
 OLLAMA_TIMEOUT_MS=180000
+```
 
-.env innehåller lokala inställningar och ska inte läggas upp på GitHub.
+Använd inte riktiga API-nycklar i GitHub eller i README-filer.
 
-## Ollama
+---
 
-AI-analysen körs lokalt med Ollama.
+## Ollama och lokal AI
 
-Ollama måste installeras separat på den dator där QA-systemet ska köras.
-### Lokal AI
+Systemet använder Ollama för lokal exekvering av AI-modellen.
 
-AI-analysen körs lokalt på datorn via Ollama.
+AI-modellen används som ett kompletterande analyslager. Den utför inte själva QA-testerna.
 
-Det innebär att QA-resultaten skickas till den lokala Ollama-servern istället för en extern AI-tjänst.
+QA-motorn genomför först de strukturerade kontrollerna. Resultaten skickas därefter till Ollama för sammanställning och tolkning.
 
-Projektet använder modellen:
+### Installera modellen
 
-qwen3:4b
-
-Ollama och AI-modellen behöver därför installeras på varje dator där AI-analysen ska användas.
-
-### Kontrollera Ollama
-
-Efter installation:
-
-ollama --version
-
-### Installera AI-modellen
-
-Projektet använder:
-
-qwen3:4b
-
-Installera modellen:
-
+```bash
 ollama pull qwen3:4b
+```
 
-Kontrollera installerade modeller:
+### Kontrollera installerade modeller
 
+```bash
 ollama list
+```
 
-### Ollama-server
+### Kontrollera Ollama-version
 
-Ollama körs normalt lokalt på:
+```bash
+ollama --version
+```
 
+Standardadressen för den lokala Ollama-servern är:
+
+```text
 http://127.0.0.1:11434
+```
 
-Detta anges i .env:
+Ollama behöver installeras separat på varje dator där lokal AI-analys ska köras.
 
-OLLAMA_HOST=http://127.0.0.1:11434
+---
 
-Modellen anges med:
+## Körning av QA-systemet
 
-OLLAMA_MODEL=qwen3:4b
+### CLI-exekvering
 
-Timeout anges med:
+Ange `TARGET_URL` och starta QA-körningen.
 
-OLLAMA_TIMEOUT_MS=180000
+### Windows PowerShell
 
-QA-systemet kontrollerar automatiskt att Ollama är tillgängligt och att den konfigurerade modellen finns installerad innan AI-analysen körs.
-
-## Köra projektet på en annan dator
-
-Ollama-modellen sparas inte i GitHub-repot eftersom modellen är flera gigabyte stor.
-
-Om projektet ska användas på en annan dator behöver modellen därför installeras lokalt på den datorn.
-
-### Steg 1 – Klona projektet
-
-git clone https://github.com/moazam33r/website-qa-system.git
-cd website-qa-system
-
-### Steg 2 – Installera projektets paket
-
-npm install
-
-### Steg 3 – Installera Playwright
-
-npx playwright install
-
-### Steg 4 – Installera Ollama
-
-Installera Ollama på datorn och kontrollera installationen:
-
-ollama --version
-
-### Steg 5 – Installera AI-modellen
-
-ollama pull qwen3:4b
-
-### Steg 6 – Skapa .env
-
-Copy-Item .env.example .env
-
-### Steg 7 – Kontrollera modellen
-
-ollama list
-
-qwen3:4b ska finnas i listan.
-
-Därefter är datorn redo att köra QA-systemets AI-analys.
-
-## Köra QA-systemet
-
-QA-systemet använder TARGET_URL för att bestämma vilken webbplats som ska analyseras.
-
-Exempel:
-
-$env:TARGET_URL="https://example.com"
+```powershell
+$env:TARGET_URL="https://digitalkontakt.se/"
 npm run qa
+```
 
-Exempel med Digitalkontakt:
+### Bash / macOS / Linux
 
-$env:TARGET_URL="https://digitalkontakt.se"
-npm run qa
+```bash
+TARGET_URL="https://digitalkontakt.se/" npm run qa
+```
 
-Systemet analyserar då webbplatsen och kör QA-kontrollerna.
+Systemet crawlar därefter målwebbplatsen och genomför de konfigurerade QA-kontrollerna.
+
+---
+
 ## CSV-scanning
 
-QA-systemet kan analysera flera webbplatser automatiskt från en CSV-fil.
+CSV-scanning används när flera webbplatser ska analyseras.
 
-CSV-filen kan innehålla flera webbplatsadresser som sedan skickas genom samma QA-process.
+Exempel på CSV-fil:
 
-Exempel:
+```csv
+website
+https://digitalkontakt.se/
+https://kallsvvs.se/
+https://abctakplat.se/
+```
 
-https://digitalkontakt.se
-https://kallsvvs.se
-https://abctakplat.se
+CSV-filen innehåller en webbplats per rad under kolumnen `website`.
 
-Det gör det möjligt att analysera flera webbplatser utan att behöva starta varje analys manuellt.
+Systemet kan därefter behandla webbplatserna sekventiellt och skapa rapportunderlag för respektive mål.
 
-CSV-scanningen använder samma QA-kontroller som en vanlig webbplatsanalys och resultaten kan även sammanställas i rapporter.
+---
 
 ## Automatiserade tester
 
-Kör hela Playwright-testsviten:
+Projektet använder automatiserade tester för att verifiera systemets funktionalitet.
 
+### Playwright
+
+Kör Playwright-testsviten:
+
+```bash
 npx playwright test
+```
 
-Kör tester med synlig webbläsare:
+### Vitest
 
-npx playwright test --headed
+Om projektets Vitest-skript används:
+
+```bash
+npm run test
+```
+
+Testerna används bland annat för att verifiera QA-logik, webbläsarflöden och systemets olika komponenter.
+
+---
 
 ## TypeScript-kontroll
 
-Kontrollera TypeScript:
+TypeScript kan kontrolleras utan att generera kompilerade filer:
 
+```bash
 npx tsc --noEmit
+```
 
-Om kommandot inte visar några fel är TypeScript-kontrollen godkänd.
+En lyckad körning innebär att projektets TypeScript-kod klarar den aktuella typkontrollen.
 
-## AI-analys
+---
 
-QA-systemet använder lokal AI för att analysera resultaten från QA-kontrollerna.
+## AI-analyslager
 
-AI-analysen körs lokalt via Ollama och modellen:
+Efter att de deterministiska QA-kontrollerna är genomförda skickas relevant testdata till den lokala AI-modellen.
 
-qwen3:4b
+AI-analysen används för att sammanfatta resultatet på ett mer lättläst sätt.
 
-AI:n får endast de resultat som QA-systemet redan har samlat in och används för att sammanfatta resultatet och ge rekommendationer.
+Analysen kan bland annat behandla:
 
-Analysen är uppdelad i fyra delar:
+1. **Identifierade styrkor**  
+   Sammanfattning av kontroller som fått `PASS`.
 
-1. Vad fungerar bra
-2. Viktigaste problemen
-3. Vad resultaten visar
-4. Rekommendationer
+2. **Kritiska avvikelser**  
+   Sammanställning av `FAIL`-resultat och identifierade problem.
 
-AI-analysen körs som en del av den vanliga QA-processen och resultatet kan visas både i API:t och i den genererade PDF-rapporten.
+3. **Tekniska observationer**  
+   Sammanställning av `WARNING`-resultat, exempelvis SEO- eller prestandarelaterade observationer.
 
-## API
+4. **Åtgärdsplan**  
+   Förslag på vilka områden som bör granskas eller förbättras.
 
-Projektet innehåller en Express-baserad API-server som kopplar samman Chrome Extension, QA-systemet, PDF-rapporteringen och den lokala AI-analysen.
+AI-resultatet ska ses som ett kompletterande analysunderlag. Den primära sanningskällan för testresultaten är de automatiserade QA-kontrollerna.
 
-Starta API-servern:
+---
 
+## REST API
+
+Starta Express-servern:
+
+```bash
 npm run api
+```
 
-eller:
+API-servern körs normalt på:
 
-npm run server
+```text
+http://localhost:3000
+```
 
-API:t används bland annat för att:
+### Endpoints
 
-- Starta en QA-analys
-- Analysera en webbplats
-- Analysera flera webbplatser från CSV
-- Skicka QA-resultat till den lokala AI-modellen
-- Generera PDF-rapporter
-- Hämta genererade rapporter
+| Metod | Endpoint | Beskrivning |
+|---|---|---|
+| `GET` | `/api/health` | Statuskontroll för API-tjänsten |
+| `POST` | `/api/scan` | Startar QA-analys mot en angiven URL |
+| `POST` | `/api/scan-csv` | Startar batch-analys från CSV |
+| `POST` | `/api/scan-csv-progress` | Batch-analys med progressrapportering |
+| `GET` | `/api/reports/:filename` | Hämtar en genererad rapport |
 
-Exempel på API-endpoints:
+### Exempel: `POST /api/scan`
 
-GET  /api/health
-POST /api/scan
-POST /api/scan-csv
-POST /api/scan-csv-progress
-GET  /api/reports/:filename
+Exempel på JSON-body:
 
+```json
+{
+  "url": "https://digitalkontakt.se/"
+}
+```
+
+API:t används bland annat som kommunikationslager mellan Chrome Extension och QA-motorn.
+
+---
 
 ## Chrome Extension
 
-Projektet innehåller en Chrome Extension som fungerar som användargränssnitt för QA-systemet.
+Projektet innehåller en Chrome Extension baserad på Manifest V3.
 
-Extensionen gör det möjligt att:
+Extensionen fungerar som ett visuellt gränssnitt mot REST API:t och gör det möjligt att starta QA-körningar utan att arbeta direkt via terminalen.
 
-1. Ange en webbplats
-2. Starta en QA-analys
-3. Skicka analysen till API-servern
-4. Visa analysresultatet
-5. Öppna den genererade PDF-rapporten
+### Installation i Google Chrome
 
-Extensionen gör systemet enklare att använda eftersom användaren inte behöver starta enskilda Playwright-tester manuellt för varje webbplats.
+1. Starta API-servern:
 
-Chrome Extension → API → QA-system → Ollama → PDF-rapport
+```bash
+npm run api
+```
 
-## PDF-rapporter
+2. Öppna:
 
-QA-systemet kan automatiskt skapa professionella PDF-rapporter efter genomförd QA-analys.
+```text
+chrome://extensions/
+```
 
-Rapporterna innehåller bland annat:
+3. Aktivera **Developer mode**.
 
-- Webbplatsinformation
-- Övergripande QA-status
-- Antal PASS-resultat
-- Antal WARNING-resultat
-- Antal FAIL-resultat
-- Resultat från genomförda QA-kontroller
-- Identifierade problem
-- AI-analys
-- Rekommendationer
+4. Klicka på **Load unpacked**.
 
-Resultaten visas med färgkodade statusrutor:
+5. Välj projektets:
 
-- Grönt = PASS
-- Orange = WARNING
-- Rött = FAIL
+```text
+extension/
+```
 
-Statusrutorna anpassas automatiskt efter mängden text. Längre meddelanden får därför mer utrymme utan att texten hamnar utanför rutan.
+6. Extensionen kan därefter användas från Chrome.
 
-PDF-rapporten kan öppnas direkt från Chrome Extension efter genomförd analys.
+---
 
+## PDF-rapportering
+
+Systemet genererar PDF-rapporter i katalogen:
+
+```text
+reports/
+```
+
+Rapporten innehåller bland annat:
+
+- mål-URL
+- datum och tidsstämpel
+- information om exekveringen
+- antal PASS
+- antal WARNING
+- antal FAIL
+- detaljerade testresultat
+- SEO-resultat
+- prestandamätvärden
+- formulärresultat
+- länkresultat
+- sociala medier och externa integrationer
+- Google Maps / Business Profile-resultat
+- AI-genererad analys
+- åtgärdsförslag
+
+Rapporten är avsedd att fungera som ett samlat QA-underlag som kan läsas av både testare och utvecklare.
+
+---
 
 ## Projektstruktur
-
-Projektet är uppdelat i separata delar för QA-kontroller, AI, API, rapportering, automatiserade tester och Chrome Extension.
 
 ```text
 website-qa-system/
 │
+├── config/                 # Konfigurationsfiler
+├── extension/              # Chrome Extension, Manifest V3
+├── reports/                # Genererade PDF-rapporter
+│
 ├── src/
-│   ├── ai/
-│   │   ├── ollama-config.ts
-│   │   ├── ollama-worker.ts
-│   │   ├── ollama.ts
-│   │   └── qa-analyzer.ts
-│   │
-│   ├── api/
-│   │   └── server.ts
-│   │
-│   ├── checks/
-│   │   ├── cookie-gdpr.ts
-│   │   ├── csv-import.ts
-│   │   ├── cta.ts
-│   │   ├── domains.ts
-│   │   ├── forms.ts
-│   │   ├── google-business-profile.ts
-│   │   ├── google-maps.ts
-│   │   ├── images.ts
-│   │   ├── links.ts
-│   │   ├── navigation.ts
-│   │   ├── pages.ts
-│   │   ├── performance.ts
-│   │   ├── responsive.ts
-│   │   ├── security.ts
-│   │   ├── seo.ts
-│   │   ├── similar-domains.ts
-│   │   ├── social-media.ts
-│   │   ├── text-check.ts
-│   │   └── validation.ts
-│   │
-│   ├── report/
-│   │   ├── pdf-report.ts
-│   │   └── qa-report.ts
-│   │
-│   ├── cli.ts
-│   └── website-scanner.ts
+│   ├── ai/                 # Ollama-integration och AI-logik
+│   ├── api/                # Express API och routes
+│   ├── crawler/            # Playwright-crawler och sididentifiering
+│   └── report/             # PDF-layout och rapportgenerering
 │
-├── tests/
-│   ├── basic.spec.ts
-│   ├── cookie-gdpr.spec.ts
-│   ├── crawler.spec.ts
-│   ├── csv-import.spec.ts
-│   ├── cta.spec.ts
-│   ├── domains.spec.ts
-│   ├── forms.spec.ts
-│   ├── google-business-profile.spec.ts
-│   ├── google-maps.spec.ts
-│   ├── images.spec.ts
-│   ├── links.spec.ts
-│   ├── navigation.spec.ts
-│   ├── pages.spec.ts
-│   ├── pdf-report.spec.ts
-│   ├── performance.spec.ts
-│   ├── responsive.spec.ts
-│   ├── security.spec.ts
-│   ├── seo.spec.ts
-│   ├── similar-domains.spec.ts
-│   ├── social-media.spec.ts
-│   ├── text-check.spec.ts
-│   ├── validation.spec.ts
-│   └── website-scanner.spec.ts
+├── tests/                  # Automatiserade tester
 │
-├── extension/
-│   ├── manifest.json
-│   ├── popup.html
-│   └── src/
-│       ├── popup.css
-│       └── popup.js
-│
-├── .env.example
-├── .gitignore
-├── package.json
-├── package-lock.json
-├── playwright.config.ts
-├── test-websites.csv
-└── README.md
+├── .env.example            # Mall för miljövariabler
+├── .gitignore              # Git-exkluderingar
+├── package.json            # Projektkonfiguration och scripts
+├── package-lock.json       # Låsta npm-versioner
+└── README.md               # Projektdokumentation
+```
+
+---
 
 ## Miljövariabler
 
-TARGET_URL
-Webbplatsen som ska analyseras.
+| Variabel | Beskrivning | Exempel / standard |
+|---|---|---|
+| `TARGET_URL` | Mål-URL för direktkörning | - |
+| `PAGESPEED_API_KEY` | API-nyckel för Google PageSpeed Insights | - |
+| `OLLAMA_HOST` | URL till lokal Ollama-instans | `http://127.0.0.1:11434` |
+| `OLLAMA_MODEL` | Namn på AI-modellen | `qwen3:4b` |
+| `OLLAMA_TIMEOUT_MS` | Timeout för AI-generering i millisekunder | `180000` |
 
-Exempel:
-https://example.com
-
-PAGESPEED_API_KEY
-API-nyckel för Google PageSpeed Insights.
-
-OLLAMA_HOST
-Adressen till Ollama-servern.
-
-Exempel:
-http://127.0.0.1:11434
-
-OLLAMA_MODEL
-AI-modellen som används.
-
-Exempel:
-qwen3:4b
-
-OLLAMA_TIMEOUT_MS
-Maximal väntetid för AI-anrop.
-
-Exempel:
-180000
+---
 
 ## Säkerhet
 
-Känsliga uppgifter och API-nycklar ska sparas i .env.
+Projektet använder miljövariabler för konfiguration och känsliga uppgifter.
 
-.env ska inte committas till GitHub.
+- API-nycklar ska lagras i `.env`.
+- `.env` ska vara exkluderad från Git via `.gitignore`.
+- API-nycklar ska inte läggas direkt i källkod.
+- Lokala sökvägar ska inte hårdkodas.
+- AI-körningen kan ske lokalt via Ollama utan att QA-resultaten behöver skickas till en extern AI-tjänst.
+- Kontrollera alltid vilka webbplatser som får crawlas och testas innan systemet körs i en produktionsmiljö.
 
-Projektets .gitignore är konfigurerad för att ignorera .env.
+---
 
-.env.example används istället för att visa vilka miljövariabler projektet behöver.
+## Distribution till ny miljö
 
-## Git och utveckling
+För att köra projektet på en ny dator:
 
-Projektet versionshanteras med Git och GitHub.
+```bash
+git clone https://github.com/moazam33r/website-qa-system.git
+cd website-qa-system
+npm install
+npx playwright install
+```
 
-Repository:
+Installera därefter Ollama och modellen om AI-funktionen ska användas:
 
-https://github.com/moazam33r/website-qa-system
+```bash
+ollama pull qwen3:4b
+```
 
-Vid utveckling bör nya funktioner testas innan de pushas till GitHub.
+Skapa sedan `.env` från `.env.example` och lägg in eventuell PageSpeed API-nyckel.
+
+Verifiera installationen:
+
+```bash
+npx tsc --noEmit
+```
+
+---
+
+## Felsökning
+
+### Ollama svarar inte
+
+Kontrollera att Ollama körs.
+
+Kontrollera installerade modeller:
+
+```bash
+ollama list
+```
+
+Kontrollera att Ollama kan nås lokalt:
+
+```bash
+curl http://127.0.0.1:11434
+```
+
+Kontrollera även att `OLLAMA_HOST` och `OLLAMA_MODEL` är korrekt konfigurerade i `.env`.
+
+### Playwright-exekveringsfel
+
+Installera Playwright-webbläsarna igen:
+
+```bash
+npx playwright install
+```
+
+På Linux kan följande även behövas:
+
+```bash
+npx playwright install --with-deps
+```
+
+### API-anslutningsfel i Chrome Extension
+
+Kontrollera att API-servern körs:
+
+```bash
+npm run api
+```
+
+Kontrollera därefter:
+
+- att port 3000 används
+- att Chrome Extension är laddad
+- att extensionens API-adress pekar mot rätt server
+- eventuella CORS-fel
+- felmeddelanden i Chrome DevTools
+
+---
+
+## Utvecklingsflöde & Git
+
+Vid utveckling av nya QA-kontroller rekommenderas följande arbetsgång:
+
+1. Implementera funktionen.
+2. Lägg till eller uppdatera automatiserade tester.
+3. Kör Playwright-tester.
+4. Kör TypeScript-kontroll.
+5. Kör en fullständig QA-körning.
+6. Dokumentera testresultatet.
+7. Commit:a ändringen.
+8. Pusha ändringen till GitHub.
 
 Exempel:
 
-npx tsc --noEmit
-
+```bash
 npx playwright test
+npx tsc --noEmit
+npm run qa
 
-## QA-resultat
+git add .
+git commit -m "feat: add new QA validation"
+git push origin main
+```
 
-Systemet använder tre huvudsakliga resultatnivåer.
+Projektets utvecklingsprincip är att nya automatiserade funktioner ska testas och dokumenteras innan de pushas till GitHub.
 
-### PASS
+---
 
-Kontrollen är godkänd och inga problem identifierades.
+## Klassificering av QA-resultat
 
-### WARNING
+| Status | Betydelse | Rekommenderad hantering |
+|---|---|---|
+| `PASS` | Kontrollen genomfördes utan identifierad avvikelse. | Ingen åtgärd krävs utifrån kontrollen. |
+| `WARNING` | Kontrollen genomfördes men ett förbättringsområde eller en avvikelse identifierades. | Bör granskas och bedömas. |
+| `FAIL` | Ett konkret funktionellt eller tekniskt problem identifierades. | Bör utredas och åtgärdas. |
 
-Kontrollen har genomförts men något bör kontrolleras eller förbättras.
+Exempel:
 
-### FAIL
+- `PASS`: En länk returnerar en förväntad statuskod.
+- `WARNING`: En sida saknar en meta-beskrivning.
+- `FAIL`: Ett formulär accepterar ogiltig input eller en viktig länk returnerar 404.
 
-Ett konkret problem har identifierats.
+---
 
-## Syfte
+## Teststrategi
 
-Syftet med projektet är att skapa ett samlat automatiserat QA-system som kan användas för att analysera webbplatser och snabbt identifiera tekniska problem, kvalitetsproblem och förbättringsområden.
+Systemet kombinerar flera testtyper för att skapa en bred QA-analys.
 
-Projektet kombinerar automatiserade Playwright-tester, olika QA-kontroller, rapportering och lokal AI-analys i ett och samma system.
+### Funktionell testning
+
+Verifierar bland annat:
+
+- länkar
+- navigation
+- formulär
+- formulärfält
+- validering
+- CTA-länkar
+
+### UI & Responsivitet
+
+Playwright används för att kontrollera webbplatsens beteende i olika viewport-storlekar.
+
+### Prestandaanalys
+
+Google PageSpeed Insights används för att samla in prestandarelaterade mätvärden som LCP, CLS och FCP.
+
+### API-testning
+
+REST API:t används som integrationslager mellan användargränssnittet och QA-motorn.
+
+### Säkerhet & SEO
+
+Systemet kontrollerar bland annat:
+
+- HTTPS
+- H1-struktur
+- meta-beskrivningar
+- Cookiepolicy
+- Integritetspolicy
+- vissa domänrelaterade konfigurationer
+
+### AI-baserad resultatsammanställning
+
+Ollama används för att sammanfatta strukturerade QA-resultat och skapa ett mer lättläst analysunderlag.
+
+---
+
+## Projektets mål & Syfte
+
+### Mål
+
+Målet med Website QA System är att skapa ett automatiserat verktyg som kan samla flera återkommande webb-QA-kontroller i ett enda system.
+
+Projektet fokuserar på:
+
+- testautomation
+- webbläsarautomation
+- QA-metodik
+- API-integration
+- rapportering
+- lokal AI
+- reproducerbara tester
+
+### Syfte
+
+Syftet är att minska manuellt och repetitivt arbete vid webbplatstestning och samtidigt skapa ett strukturerat underlag för vidare felsökning och förbättring.
+
+Systemet är även utformat som ett praktiskt projekt inom IT-testning och testautomation, där flera tekniker kombineras i ett sammanhängande QA-flöde.
+
+---
+
+## Exempel på användning
+
+Ett typiskt arbetsflöde kan se ut så här:
+
+1. Användaren anger en målwebbplats.
+2. Crawlern identifierar webbplatsens sidor.
+3. QA-motorn genomför de definierade kontrollerna.
+4. Resultaten klassificeras som PASS, WARNING eller FAIL.
+5. Resultaten skickas till Ollama för kompletterande analys.
+6. Systemet genererar en PDF-rapport.
+7. Rapporten kan användas som QA-underlag för utveckling och vidare felsökning.
+
+---
+
+## Sammanfattning
+
+Website QA System kombinerar webbcrawling, automatiserad testning, Playwright, TypeScript, Node.js, REST API, Chrome Extension, PDF-rapportering och lokal AI-analys i ett sammanhängande kvalitetssäkringssystem.
+
+Projektet är byggt för att demonstrera hur automatiserad QA kan användas för att systematiskt analysera webbplatser och skapa reproducerbara testresultat.
+
+**GitHub Repository:**  
+https://github.com/moazam33r/website-qa-system
