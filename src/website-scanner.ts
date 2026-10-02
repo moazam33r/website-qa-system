@@ -700,34 +700,69 @@ export async function scanWebsite(
     pages
   );
 
-  const totalLinkFailures =
-    linkResult.internalFailed +
-    linkResult.externalFailed;
+  // Räknar både trasiga länkar och länkar som verkar
+// leda till fel typ av sida.
+const totalLinkFailures =
+  linkResult.internalFailed +
+  linkResult.externalFailed;
 
-  const totalLinks =
-    linkResult.internalPassed +
-    linkResult.internalFailed +
-    linkResult.externalPassed +
-    linkResult.externalFailed;
+const totalIntentFailures =
+  linkResult.intentFailed;
 
-  if (totalLinkFailures === 0) {
+const totalLinks =
+  linkResult.internalPassed +
+  linkResult.internalFailed +
+  linkResult.externalPassed +
+  linkResult.externalFailed;
 
-    results.push({
-      name: "Länkar",
-      status: "PASS",
-      message:
-        `${totalLinks} länkar fungerar`,
-    });
 
-  } else {
+// Om det finns trasiga länkar är resultatet FAIL.
+if (totalLinkFailures > 0) {
 
-    results.push({
-      name: "Länkar",
-      status: "FAIL",
-      message:
-        `${totalLinkFailures} länkar fungerar inte`,
-    });
-  }
+  results.push({
+    name: "Länkar",
+    status: "FAIL",
+    message:
+      `${totalLinkFailures} länkar fungerar inte`,
+  });
+
+
+// Om själva länkarna fungerar men någon länk
+// verkar leda till fel sida får vi WARNING.
+} else if (totalIntentFailures > 0) {
+
+  // Skapar detaljer för AI:n och PDF-rapporten.
+  const intentDetails =
+    linkResult.intentFailures
+      .map(
+        (failure) =>
+          `"${failure.linkText}" → ${failure.expected} ` +
+          `(faktisk destination: ${failure.targetUrl})`
+      )
+      .join("\n");
+
+  results.push({
+    name: "Länkar",
+    status: "WARNING",
+    message:
+      `${totalLinks} länkar fungerar, men ` +
+      `${totalIntentFailures} länkar verkar leda till fel sida.\n` +
+      intentDetails,
+  });
+
+
+// Om både länkar och destinationer ser rätt ut
+// blir resultatet PASS.
+} else {
+
+  results.push({
+    name: "Länkar",
+    status: "PASS",
+    message:
+      `${totalLinks} länkar fungerar och ` +
+      `inga tydliga felaktiga destinationer hittades`,
+  });
+}
 
 
   // =======================================================

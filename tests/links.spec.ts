@@ -24,7 +24,11 @@ test("Links check", async ({ page }) => {
     pages
   );
 
-  // Kontrollerar att alla resultat finns
+  // =======================================================
+  // VANLIGA LÄNKRESULTAT
+  // =======================================================
+
+  // Kontrollerar att alla vanliga resultat finns
   expect(result).toHaveProperty("internalPassed");
   expect(result).toHaveProperty("internalFailed");
   expect(result).toHaveProperty("externalPassed");
@@ -42,12 +46,89 @@ test("Links check", async ({ page }) => {
   expect(result.externalPassed).toBeGreaterThanOrEqual(0);
   expect(result.externalFailed).toBeGreaterThanOrEqual(0);
 
-  // Minst en länk ska ha kontrollerats
+
+  // =======================================================
+  // LINK INTENT RESULTAT
+  // =======================================================
+
+  // Kontrollerar att den nya Link Intent-kontrollen
+  // returnerar rätt resultat.
+  expect(result).toHaveProperty("intentFailures");
+  expect(result).toHaveProperty("intentFailed");
+
+  // intentFailures ska vara en array.
+  expect(
+    Array.isArray(result.intentFailures)
+  ).toBe(true);
+
+  // intentFailed ska vara ett nummer.
+  expect(
+    typeof result.intentFailed
+  ).toBe("number");
+
+  // Antalet intent-fel ska aldrig vara negativt.
+  expect(
+    result.intentFailed
+  ).toBeGreaterThanOrEqual(0);
+
+  // Antalet rapporterade intent-fel ska stämma
+  // överens med längden på arrayen.
+  expect(
+    result.intentFailed
+  ).toBe(
+    result.intentFailures.length
+  );
+
+
+  // =======================================================
+  // TOTALA LÄNKAR
+  // =======================================================
+
+  // Räknar totalt antal länkar som kontrollerades.
   const totalLinks =
     result.internalPassed +
     result.internalFailed +
     result.externalPassed +
     result.externalFailed;
 
+  // Minst en länk ska ha kontrollerats.
   expect(totalLinks).toBeGreaterThan(0);
+
+
+  // =======================================================
+  // LOGGAR LINK INTENT RESULTATET
+  // =======================================================
+
+  // Visar en tydlig sammanfattning i testresultatet.
+  console.log(
+    `\nLink Intent: ${result.intentFailed} möjliga felaktiga destinationer hittades.`
+  );
+
+  // Visar detaljer om någon länk verkar leda till fel sida.
+  for (const failure of result.intentFailures) {
+
+    console.log(
+      `\n⚠ Link Intent Problem`
+    );
+
+    console.log(
+      `Länktext: ${failure.linkText}`
+    );
+
+    console.log(
+      `Förväntat: ${failure.expected}`
+    );
+
+    console.log(
+      `Destination: ${failure.targetUrl}`
+    );
+
+    console.log(
+      `Title: ${failure.targetTitle || "saknas"}`
+    );
+
+    console.log(
+      `H1: ${failure.targetHeading || "saknas"}`
+    );
+  }
 });
