@@ -1,11 +1,20 @@
 import { Page } from "@playwright/test";
+import { parsePhoneNumberFromString } from "libphonenumber-js";
 
-// =========================================================
-// TYPER
-// =========================================================
+/**
+ * Beskriver ett länkningsfel.
+ */
+export interface LinkFailure {
+  sourcePage: string;
+  url: string;
+  type: "intern" | "extern" | "telefon";
+  status?: number;
+  error: string;
+}
 
-// Resultat för en länk som leder till en sida som verkar
-// vara fel i förhållande till länkens text.
+/**
+ * Beskriver ett möjligt fel i länkens syfte.
+ */
 export interface LinkIntentFailure {
   sourcePage: string;
   linkText: string;
@@ -15,668 +24,534 @@ export interface LinkIntentFailure {
   targetHeading: string;
 }
 
-// =========================================================
-// HJÄLPFUNKTIONER
-// =========================================================
-
-// Normaliserar text så att jämförelser blir enklare.
-//
-// Exempel:
-// "Begär   Offert!" -> "begar offert"
-function normalizeText(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9åäö\s]/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+/**
+ * Resultat för en telefonlänk.
+ */
+export interface PhoneLinkResult {
+  sourcePage: string;
+  url: string;
+  phoneNumber: string;
+  type: "tel" | "callto";
+  valid: boolean;
+  error?: string;
 }
 
+/**
+ * Samlat resultat från länkkontrollen.
+ */
+export interface LinkCheckResult {
+  internalPassed: number;
+  internalFailed: number;
 
-// =========================================================
-// IDENTIFIERA LÄNKENS SYFTE
-// =========================================================
+  externalPassed: number;
+  externalFailed: number;
 
-// Försöker förstå vad användaren förväntar sig att en länk
-// ska leda till baserat på länktexten.
-//
-// Vi kontrollerar inte alla vanliga textlänkar.
-// Vi fokuserar på tydliga länkar där destinationen har
-// ett tydligt förväntat syfte.
-function detectLinkIntent(text: string): string | null {
+  linkFailures: LinkFailure[];
 
-  const normalized = normalizeText(text);
+  phoneLinks: PhoneLinkResult[];
 
-  // -------------------------------------------------------
-  // OFFERT
-  // -------------------------------------------------------
+  intentFailures: LinkIntentFailure[];
+  intentFailed: number;
+}
 
+/**
+ * Kontrollerar om ett telefonnummer är giltigt.
+ *
+ * Vi använder Sverige som standard eftersom systemet
+ * främst används för svenska webbplatser.
+ *
+ * Kontrollen verifierar:
+ * - att numret kan tolkas
+ * - att numret följer en giltig nummerplan
+ * - att formatet är giltigt
+ *
+ * Kontrollen verifierar INTE att numret faktiskt
+ * tillhör en aktiv abonnent.
+ */
+function validatePhoneNumber(phoneNumber: string): {
+  valid: boolean;
+  error?: string;
+} {
+  try {
+    // Tar bort whitespace runt numret.
+    let cleaned = phoneNumber.trim();
+
+    // Om numret använder internationellt format med 00,
+    // konverterar vi det till +.
+    if (cleaned.startsWith("00")) {
+      cleaned = `+${cleaned.substring(2)}`;
+    }
+
+    // Försöker tolka numret som ett svenskt nummer.
+    const parsed = parsePhoneNumberFromString(cleaned, "SE");
+
+    // Om numret inte kunde tolkas är formatet felaktigt.
+    if (!parsed) {
+      return {
+        valid: false,
+        error: "Telefonnumret kunde inte tolkas",
+      };
+    }
+
+    // Kontrollerar om numret följer en giltig nummerplan.
+    if (!parsed.isValid()) {
+      return {
+        valid: false,
+        error: "Telefonnumret följer inte en giltig svensk nummerplan",
+      };
+    }
+
+    // Numret är giltigt.
+    return {
+      valid: true,
+    };
+  } catch {
+    // Om något oväntat händer behandlas numret som ogiltigt.
+    return {
+      valid: false,
+      error: "Telefonnumret kunde inte valideras",
+    };
+  }
+}
+
+/**
+ * Kontrollerar en tel:- eller callto:-länk.
+ *
+ * Exempel:
+ * tel:0701234567
+ * tel:+46701234567
+ * callto:0701234567
+ */
+function checkPhoneLink(
+  sourcePage: string,
+  url: string
+): PhoneLinkResult {
+  // Bestämmer vilken typ av telefonlänk det är.
+  const type = url.toLowerCase().startsWith("callto:")
+    ? "callto"
+    : "tel";
+
+  // Tar bort tel: eller callto: från länken.
+  let phoneNumber = url
+    .replace(/^tel:/i, "")
+    .replace(/^callto:/i, "")
+    .trim();
+
+  // Tar bort eventuella parametrar efter telefonnumret.
+  phoneNumber = phoneNumber.split("?")[0].split(";")[0];
+
+  // Validerar själva telefonnumret.
+  const validation = validatePhoneNumber(phoneNumber);
+
+  return {
+    sourcePage,
+    url,
+    phoneNumber,
+    type,
+    valid: validation.valid,
+    error: validation.error,
+  };
+}
+
+/**
+ * Försöker avgöra vilket syfte en länk har baserat på länktexten.
+ */
+function detectLinkIntent(linkText: string): string | null {
+  const text = linkText.toLowerCase().trim();
+
+  // Offertrelaterade länkar.
   if (
-    normalized.includes("begar offert") ||
-    normalized.includes("begar en offert") ||
-    normalized.includes("offertforfragan") ||
-    normalized.includes("offert") ||
-    normalized.includes("fa offert") ||
-    normalized.includes("kostnadsfri offert") ||
-    normalized.includes("gratis offert")
+    text.includes("offert") ||
+    text.includes("prisförslag") ||
+    text.includes("kostnadsförslag")
   ) {
     return "offert";
   }
 
-
-  // -------------------------------------------------------
-  // KONTAKT
-  // -------------------------------------------------------
-
+  // Kontaktrelaterade länkar.
   if (
-    normalized === "kontakt" ||
-    normalized.includes("kontakta oss") ||
-    normalized.includes("kontakt oss") ||
-    normalized.includes("kontakta foretaget") ||
-    normalized.includes("hor av dig") ||
-    normalized.includes("ta kontakt")
+    text.includes("kontakt") ||
+    text.includes("kontakta") ||
+    text.includes("hör av dig")
   ) {
     return "kontakt";
   }
 
-
-  // -------------------------------------------------------
-  // OM OSS
-  // -------------------------------------------------------
-
+  // Om oss-relaterade länkar.
   if (
-    normalized === "om oss" ||
-    normalized.includes("las mer om oss") ||
-    normalized.includes("mer om oss") ||
-    normalized.includes("om foretaget") ||
-    normalized.includes("vilka ar vi")
+    text.includes("om oss") ||
+    text.includes("om företaget") ||
+    text.includes("vilka är vi")
   ) {
     return "om-oss";
   }
 
-
-  // -------------------------------------------------------
-  // TJÄNSTER
-  // -------------------------------------------------------
-
+  // Tjänsterelaterade länkar.
   if (
-    normalized === "tjanster" ||
-    normalized === "vara tjanster" ||
-    normalized.includes("vara tjanster") ||
-    normalized.includes("vad vi erbjuder") ||
-    normalized.includes("vara losningar")
+    text.includes("tjänst") ||
+    text.includes("tjänster") ||
+    text.includes("vad vi gör") ||
+    text.includes("våra tjänster")
   ) {
     return "tjanster";
   }
 
-
-  // -------------------------------------------------------
-  // REFERENSER / PROJEKT
-  // -------------------------------------------------------
-
+  // Referensrelaterade länkar.
   if (
-    normalized === "referenser" ||
-    normalized === "vara referenser" ||
-    normalized === "projekt" ||
-    normalized === "vara projekt" ||
-    normalized.includes("tidigare projekt")
+    text.includes("referens") ||
+    text.includes("referenser") ||
+    text.includes("projekt") ||
+    text.includes("tidigare arbeten")
   ) {
     return "referenser";
   }
 
-
-  // -------------------------------------------------------
-  // HITTADES INGET TYDLIGT SYFTE
-  // -------------------------------------------------------
-
+  // Ingen tydlig intention hittades.
   return null;
 }
 
-
-// =========================================================
-// KONTROLLERA OM DESTINATIONEN MATCHAR SYFTET
-// =========================================================
-
-// Kontrollerar URL, title, H1 och en begränsad mängd synlig
-// text från destinationssidan.
-//
-// Vi använder flera signaler eftersom en sida exempelvis kan
-// heta "/kontakt" men samtidigt vara en offert-/kontaktsida.
+/**
+ * Kontrollerar om en URL verkar passa det förväntade syftet.
+ *
+ * Vi använder URL, title, H1 och en begränsad mängd
+ * text från sidan för att minska risken för falska varningar.
+ */
 function destinationMatchesIntent(
-  intent: string,
+  expectedIntent: string,
   targetUrl: string,
   targetTitle: string,
   targetHeading: string,
-  targetText: string
+  bodyText: string
 ): boolean {
+  const combinedText = `
+    ${targetUrl}
+    ${targetTitle}
+    ${targetHeading}
+    ${bodyText}
+  `.toLowerCase();
 
-  const urlText =
-    normalizeText(
-      new URL(targetUrl).pathname
-    );
+  switch (expectedIntent) {
+    case "offert":
+      return (
+        combinedText.includes("offert") ||
+        combinedText.includes("prisförslag") ||
+        combinedText.includes("kostnadsförslag")
+      );
 
-  const titleText =
-    normalizeText(targetTitle);
+    case "kontakt":
+      return (
+        combinedText.includes("kontakt") ||
+        combinedText.includes("kontakta") ||
+        combinedText.includes("telefon") ||
+        combinedText.includes("e-post") ||
+        combinedText.includes("email")
+      );
 
-  const headingText =
-    normalizeText(targetHeading);
+    case "om-oss":
+      return (
+        combinedText.includes("om oss") ||
+        combinedText.includes("om företaget") ||
+        combinedText.includes("vilka är vi")
+      );
 
-  const bodyText =
-    normalizeText(targetText.slice(0, 5000));
+    case "tjanster":
+      return (
+        combinedText.includes("tjänst") ||
+        combinedText.includes("tjänster") ||
+        combinedText.includes("vad vi gör")
+      );
 
+    case "referenser":
+      return (
+        combinedText.includes("referens") ||
+        combinedText.includes("referenser") ||
+        combinedText.includes("projekt") ||
+        combinedText.includes("tidigare arbeten")
+      );
 
-  // -------------------------------------------------------
-  // OFFERT
-  // -------------------------------------------------------
-
-  if (intent === "offert") {
-
-    const keywords = [
-      "offert",
-      "begar offert",
-      "offertforfragan",
-      "offertformular",
-      "fa offert",
-      "kostnadsfri offert",
-      "prisforfragan",
-    ];
-
-    return keywords.some(
-      (keyword) =>
-        urlText.includes(keyword) ||
-        titleText.includes(keyword) ||
-        headingText.includes(keyword) ||
-        bodyText.includes(keyword)
-    );
+    default:
+      return true;
   }
-
-
-  // -------------------------------------------------------
-  // KONTAKT
-  // -------------------------------------------------------
-
-  if (intent === "kontakt") {
-
-    const keywords = [
-      "kontakt",
-      "kontakta oss",
-      "kontaktformular",
-      "hor av dig",
-    ];
-
-    return keywords.some(
-      (keyword) =>
-        urlText.includes(keyword) ||
-        titleText.includes(keyword) ||
-        headingText.includes(keyword) ||
-        bodyText.includes(keyword)
-    );
-  }
-
-
-  // -------------------------------------------------------
-  // OM OSS
-  // -------------------------------------------------------
-
-  if (intent === "om-oss") {
-
-    const keywords = [
-      "om oss",
-      "om foretaget",
-      "om-oss",
-      "vilka ar vi",
-    ];
-
-    return keywords.some(
-      (keyword) =>
-        urlText.includes(keyword) ||
-        titleText.includes(keyword) ||
-        headingText.includes(keyword) ||
-        bodyText.includes(keyword)
-    );
-  }
-
-
-  // -------------------------------------------------------
-  // TJÄNSTER
-  // -------------------------------------------------------
-
-  if (intent === "tjanster") {
-
-    const keywords = [
-      "tjanster",
-      "vara tjanster",
-      "vara losningar",
-      "tjanst",
-    ];
-
-    return keywords.some(
-      (keyword) =>
-        urlText.includes(keyword) ||
-        titleText.includes(keyword) ||
-        headingText.includes(keyword) ||
-        bodyText.includes(keyword)
-    );
-  }
-
-
-  // -------------------------------------------------------
-  // REFERENSER
-  // -------------------------------------------------------
-
-  if (intent === "referenser") {
-
-    const keywords = [
-      "referenser",
-      "projekt",
-      "vara projekt",
-      "tidigare projekt",
-      "case",
-    ];
-
-    return keywords.some(
-      (keyword) =>
-        urlText.includes(keyword) ||
-        titleText.includes(keyword) ||
-        headingText.includes(keyword) ||
-        bodyText.includes(keyword)
-    );
-  }
-
-
-  return true;
 }
 
-
-// =========================================================
-// HUVUDFUNKTION
-// =========================================================
-
-// Kontrollerar interna och externa länkar på webbplatsen.
-//
-// Utöver HTTP-status kontrolleras även om tydliga länkar
-// verkar leda till rätt typ av sida.
+/**
+ * Kontrollerar länkar på webbplatsen.
+ */
 export async function checkLinks(
   page: Page,
   url: string,
   pages: string[]
-) {
-
-  // Håller koll på länkar som redan har kontrollerats.
-  const checkedLinks = new Set<string>();
-
-  // Räknar interna länkar.
+): Promise<LinkCheckResult> {
   let internalPassed = 0;
   let internalFailed = 0;
 
-  // Räknar externa länkar.
   let externalPassed = 0;
   let externalFailed = 0;
 
-  // Sparar länkar där destinationen inte verkar matcha
-  // länkens avsedda syfte.
+  const linkFailures: LinkFailure[] = [];
+  const phoneLinks: PhoneLinkResult[] = [];
   const intentFailures: LinkIntentFailure[] = [];
 
-
-  // Hämtar webbplatsens origin en gång.
-  const siteOrigin = new URL(url).origin;
-
-
-  // =======================================================
-  // GÅ IGENOM ALLA SIDOR
-  // =======================================================
-
-  for (const pageUrl of pages) {
-
-    // Öppnar sidan.
-    await page.goto(pageUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 15000,
-    });
-
-
-    // Hämtar alla länkar på sidan.
-    //
-    // Vi hämtar nu både:
-    // - href
-    // - synlig länktext
-    //
-    // Detta behövs för Link Intent Validation.
-    const pageLinks =
-      await page.locator("a[href]").evaluateAll(
-        (elements) =>
-          elements.map((element) => {
-
-            const href =
-              (element as HTMLAnchorElement).href;
-
-            const text =
-              (element.textContent || "").trim();
-
-            const linkUrl =
-              new URL(href);
-
-            // Tar bort # från länken.
-            linkUrl.hash = "";
-
-            return {
-              url: linkUrl.toString(),
-              text,
-            };
-          })
-      );
-
-
-    // Tar bort duplicerade länkar.
-    const uniquePageLinks = Array.from(
-      new Map(
-        pageLinks.map((link) => [
-          `${link.url}|${link.text}`,
-          link,
-        ])
-      ).values()
-    );
-
-
-    // =====================================================
-    // KONTROLLERA VARJE LÄNK
-    // =====================================================
-
-    for (const linkData of uniquePageLinks) {
-
-      const link = linkData.url;
-      const linkText = linkData.text;
-
-
-      // Hoppar över länkar som redan har testats.
-      if (checkedLinks.has(link)) {
-        continue;
-      }
-
-      checkedLinks.add(link);
-
-
-      // Hoppar över e-postlänkar.
-      if (link.startsWith("mailto:")) {
-        continue;
-      }
-
-
-      // Hoppar över telefonlänkar.
-      if (link.startsWith("tel:")) {
-        continue;
-      }
-
-
-      // Hoppar över JavaScript-länkar.
-      if (link.startsWith("javascript:")) {
-        continue;
-      }
-
-
-      // Kontrollerar om länken är intern.
-      const isInternalLink =
-        link.startsWith(siteOrigin);
-
-
-      // =====================================================
-      // EXTERNA LÄNKAR
-      // =====================================================
-
-      if (!isInternalLink) {
-
-        try {
-
-          // Skickar request till den externa länken.
-          const response =
-            await page.request.get(link);
-
-          // Hämtar HTTP-status.
-          const status =
-            response.status();
-
-
-          if (
-            status >= 200 &&
-            status < 400
-          ) {
-
-            externalPassed++;
-
-            console.log(
-              `✓ Extern länk - ${link} - ${status}`
-            );
-
-          } else {
-
-            externalFailed++;
-
-            console.log(
-              `✗ Extern länk - ${link} - ${status}`
-            );
-          }
-
-        } catch {
-
-          externalFailed++;
-
-          console.log(
-            `✗ Extern länk - ${link} - Request failed`
-          );
-        }
-
-        continue;
-      }
-
-
-      // =====================================================
-      // INTERNA LÄNKAR
-      // =====================================================
-
-      try {
-
-        // Skickar request till den interna länken.
-        const response =
-          await page.request.get(link);
-
-        // Hämtar HTTP-status.
-        const status =
-          response.status();
-
-
-        if (
-          status >= 200 &&
-          status < 400
-        ) {
-
-          internalPassed++;
-
-          console.log(
-            `✓ ${link} - ${status}`
-          );
-
-
-          // =================================================
-          // LINK INTENT
-          // =================================================
-
-          // Försöker förstå vad länken förväntas leda till.
-          const intent =
-            detectLinkIntent(linkText);
-
-
-          // Om länken inte har ett tydligt syfte hoppar
-          // vi över intent-kontrollen.
-          //
-          // Exempel:
-          // "Läs mer" är för generellt för att avgöra
-          // vilken sida länken borde leda till.
-          if (!intent) {
-            continue;
-          }
-
-
-          try {
-
-            // Hämtar HTML från destinationssidan.
-            const html =
-              await response.text();
-
-
-            // ------------------------------------------------
-            // Hämtar title
-            // ------------------------------------------------
-
-            const titleMatch =
-              html.match(
-                /<title[^>]*>([\s\S]*?)<\/title>/i
-              );
-
-            const targetTitle =
-              titleMatch?.[1]
-                ?.replace(/<[^>]+>/g, "")
-                .trim() || "";
-
-
-            // ------------------------------------------------
-            // Hämtar första H1
-            // ------------------------------------------------
-
-            const headingMatch =
-              html.match(
-                /<h1[^>]*>([\s\S]*?)<\/h1>/i
-              );
-
-            const targetHeading =
-              headingMatch?.[1]
-                ?.replace(/<[^>]+>/g, "")
-                .trim() || "";
-
-
-            // ------------------------------------------------
-            // Hämtar text
-            // ------------------------------------------------
-
-            const targetText =
-              html
-                .replace(
-                  /<script[\s\S]*?<\/script>/gi,
-                  " "
-                )
-                .replace(
-                  /<style[\s\S]*?<\/style>/gi,
-                  " "
-                )
-                .replace(
-                  /<[^>]+>/g,
-                  " "
-                )
-                .replace(
-                  /\s+/g,
-                  " "
-                )
-                .trim();
-
-
-            // Kontrollerar om destinationen verkar motsvara
-            // länkens syfte.
-            const matches =
-              destinationMatchesIntent(
-                intent,
-                link,
-                targetTitle,
-                targetHeading,
-                targetText
-              );
-
-
-            if (!matches) {
-
-              // Översätter intern intent till en text som
-              // blir lättare att förstå i rapporten.
-              const expectedLabels: Record<
-                string,
-                string
-              > = {
-                offert: "offert-/förfrågningssida",
-                kontakt: "kontaktsida",
-                "om-oss": "Om oss-sida",
-                tjanster: "tjänstesida",
-                referenser: "referens-/projektsida",
-              };
-
-
-              const expected =
-                expectedLabels[intent] ||
-                intent;
-
-
-              // Sparar detaljer om problemet.
-              intentFailures.push({
-                sourcePage: pageUrl,
-                linkText:
-                  linkText || "(saknar länktext)",
-                expected,
-                targetUrl: link,
-                targetTitle,
-                targetHeading,
-              });
-
-
-              console.log(
-                `✗ Link Intent - "${linkText}" ` +
-                `verkar leda till fel sida: ${link}`
-              );
-
-            } else {
-
-              console.log(
-                `✓ Link Intent - "${linkText}" ` +
-                `matchar destinationen`
-              );
-            }
-
-          } catch {
-
-            // Om HTML inte kan analyseras låter vi det vanliga
-            // länktestet fortsätta vara PASS.
-            //
-            // Vi ska inte skapa FAIL bara för att
-            // innehållsanalysen inte gick att genomföra.
-            console.log(
-              `⚠ Link Intent kunde inte analyseras: ${link}`
-            );
-          }
-
-
-        } else {
-
-          internalFailed++;
-
-          console.log(
-            `✗ ${link} - ${status}`
-          );
-        }
-
-      } catch {
-
-        internalFailed++;
-
-        console.log(
-          `✗ ${link} - Request failed`
-        );
-      }
+  // Hämtar grunddomänen för webbplatsen.
+  const baseUrl = new URL(url);
+
+  /**
+   * Kontrollerar om en URL är intern.
+   */
+  function isInternalLink(linkUrl: string): boolean {
+    try {
+      const parsedUrl = new URL(linkUrl);
+
+      return parsedUrl.hostname === baseUrl.hostname;
+    } catch {
+      return false;
     }
   }
 
+  /**
+   * Går igenom alla sidor som crawlern hittat.
+   */
+  for (const sourcePage of pages) {
+    try {
+      // Öppnar sidan.
+      await page.goto(sourcePage, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
 
-  // =======================================================
-  // SAMMANFATTNING
-  // =======================================================
+      // Hämtar alla länkar från sidan.
+      const links = await page.locator("a").evaluateAll((anchors) =>
+        anchors.map((anchor) => ({
+          href: (anchor as HTMLAnchorElement).href,
+          text: (anchor.textContent || "").trim(),
+        }))
+      );
 
-  console.log("\nLink summary:");
+      // Undviker att kontrollera exakt samma URL flera gånger
+      // på samma sida.
+      const checkedUrls = new Set<string>();
 
+      for (const link of links) {
+        const href = link.href;
+        const linkText = link.text;
+
+        // Hoppa över tomma länkar.
+        if (!href) {
+          continue;
+        }
+
+        // Hoppa över anchors på samma sida.
+        if (href.startsWith("#")) {
+          continue;
+        }
+
+        // Hoppa över JavaScript-länkar.
+        if (href.toLowerCase().startsWith("javascript:")) {
+          continue;
+        }
+
+        // ---------------------------------------------------------
+        // TELEFONLÄNK
+        // ---------------------------------------------------------
+
+        if (
+          href.toLowerCase().startsWith("tel:") ||
+          href.toLowerCase().startsWith("callto:")
+        ) {
+          const phoneResult = checkPhoneLink(sourcePage, href);
+
+          phoneLinks.push(phoneResult);
+
+          if (phoneResult.valid) {
+            console.log(
+              `✓ Telefon: ${phoneResult.phoneNumber} (${sourcePage})`
+            );
+          } else {
+            console.log(
+              `✗ Ogiltig telefon: ${phoneResult.phoneNumber} (${sourcePage})`
+            );
+          }
+
+          continue;
+        }
+
+        // ---------------------------------------------------------
+        // E-POSTLÄNK
+        // ---------------------------------------------------------
+
+        // Mailto-länkar behöver inte HTTP-kontrolleras.
+        if (href.toLowerCase().startsWith("mailto:")) {
+          continue;
+        }
+
+        // ---------------------------------------------------------
+        // HTTP / HTTPS
+        // ---------------------------------------------------------
+
+        if (
+          !href.toLowerCase().startsWith("http://") &&
+          !href.toLowerCase().startsWith("https://")
+        ) {
+          continue;
+        }
+
+        // Undvik samma URL flera gånger på samma sida.
+        if (checkedUrls.has(href)) {
+          continue;
+        }
+
+        checkedUrls.add(href);
+
+        // Bestämmer om länken är intern eller extern.
+        const internal = isInternalLink(href);
+
+        try {
+          // Gör en HTTP-request mot länken.
+          const response = await page.request.get(href, {
+            timeout: 15000,
+            failOnStatusCode: false,
+          });
+
+          const status = response.status();
+
+          // HTTP-status 200-399 räknas som fungerande.
+          if (status >= 200 && status < 400) {
+            if (internal) {
+              internalPassed++;
+            } else {
+              externalPassed++;
+            }
+          } else {
+            // Länken svarar men med felaktig HTTP-status.
+            if (internal) {
+              internalFailed++;
+            } else {
+              externalFailed++;
+            }
+
+            linkFailures.push({
+              sourcePage,
+              url: href,
+              type: internal ? "intern" : "extern",
+              status,
+              error: `HTTP ${status}`,
+            });
+          }
+        } catch (error) {
+          // Requesten kunde inte genomföras.
+          if (internal) {
+            internalFailed++;
+          } else {
+            externalFailed++;
+          }
+
+          linkFailures.push({
+            sourcePage,
+            url: href,
+            type: internal ? "intern" : "extern",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Okänt anslutningsfel",
+          });
+        }
+
+        // ---------------------------------------------------------
+        // LINK INTENT
+        // ---------------------------------------------------------
+
+        // Link Intent används endast för interna länkar.
+        if (!internal) {
+          continue;
+        }
+
+        // Försök hitta länkens avsedda syfte.
+        const expectedIntent = detectLinkIntent(linkText);
+
+        // Om länktexten inte har en tydlig intention
+        // behöver vi inte göra någon Intent-kontroll.
+        if (!expectedIntent) {
+          continue;
+        }
+
+        try {
+          // Öppnar destinationen.
+          const targetPage = await page.context().newPage();
+
+          try {
+            await targetPage.goto(href, {
+              waitUntil: "domcontentloaded",
+              timeout: 20000,
+            });
+
+            // Hämtar title.
+            const targetTitle = await targetPage.title();
+
+            // Hämtar första H1.
+            const targetHeading = await targetPage
+              .locator("h1")
+              .first()
+              .textContent()
+              .catch(() => "");
+
+            // Hämtar en begränsad mängd synlig text.
+            const bodyText = await targetPage.locator("body").innerText();
+
+            // Begränsar mängden text för att hålla kontrollen snabb.
+            const limitedBodyText = bodyText.substring(0, 5000);
+
+            // Kontrollerar om destinationen verkar passa länkens syfte.
+            const matches = destinationMatchesIntent(
+              expectedIntent,
+              href,
+              targetTitle,
+              targetHeading || "",
+              limitedBodyText
+            );
+
+            // Om destinationen inte verkar passa skapas en WARNING.
+            if (!matches) {
+              intentFailures.push({
+                sourcePage,
+                linkText,
+                expected: expectedIntent,
+                targetUrl: href,
+                targetTitle,
+                targetHeading: (targetHeading || "").trim(),
+              });
+            }
+          } finally {
+            // Stänger den tillfälliga sidan.
+            await targetPage.close();
+          }
+        } catch {
+          // Om destinationen inte kan öppnas har HTTP-kontrollen
+          // redan registrerat ett eventuellt länkningsfel.
+        }
+      }
+    } catch (error) {
+      // Om själva källsidan inte kunde öppnas loggar vi felet.
+      console.log(
+        `✗ Kunde inte kontrollera länkar på ${sourcePage}:`,
+        error
+      );
+    }
+  }
+
+  // Räknar antal giltiga och ogiltiga telefonlänkar.
+  const validPhoneLinks = phoneLinks.filter(
+    (phone) => phone.valid
+  ).length;
+
+  const invalidPhoneLinks = phoneLinks.filter(
+    (phone) => !phone.valid
+  ).length;
+
+  // ---------------------------------------------------------
+  // RESULTAT I TERMINALEN
+  // ---------------------------------------------------------
+
+  console.log("");
   console.log(
     `Internal links: ${internalPassed} passed, ${internalFailed} failed`
   );
@@ -685,56 +560,74 @@ export async function checkLinks(
     `External links: ${externalPassed} passed, ${externalFailed} failed`
   );
 
+  console.log(
+    `Phone links: ${validPhoneLinks} valid, ${invalidPhoneLinks} invalid`
+  );
 
-  console.log("\nLink Intent summary:");
+  console.log("");
+  console.log("Link Intent summary:");
 
   if (intentFailures.length === 0) {
-
     console.log(
       "✓ Alla tydliga länkar verkar leda till rätt typ av sida."
     );
-
   } else {
-
     console.log(
-      `✗ ${intentFailures.length} länkar verkar leda till fel sida.`
+      `⚠ ${intentFailures.length} möjliga felaktiga destinationer hittades.`
     );
 
-
-    // Visar detaljer för varje problem.
     for (const failure of intentFailures) {
-
       console.log(
-        `✗ "${failure.linkText}" på ${failure.sourcePage}`
+        `- "${failure.linkText}" → ${failure.expected}`
       );
-
-      console.log(
-        `  Förväntat: ${failure.expected}`
-      );
-
-      console.log(
-        `  Faktisk destination: ${failure.targetUrl}`
-      );
-
-      console.log(
-        `  Title: ${failure.targetTitle || "saknas"}`
-      );
-
-      console.log(
-        `  H1: ${failure.targetHeading || "saknas"}`
-      );
+      console.log(`  Destination: ${failure.targetUrl}`);
     }
   }
 
+  // Visar detaljer för HTTP-fel.
+  if (linkFailures.length > 0) {
+    console.log("");
+    console.log("Link failures:");
 
-  // Returnerar resultaten till QA-systemet.
+    for (const failure of linkFailures) {
+      console.log(`- Sida: ${failure.sourcePage}`);
+      console.log(`  Länk: ${failure.url}`);
+      console.log(`  Typ: ${failure.type}`);
+
+      if (failure.status) {
+        console.log(`  Status: ${failure.status}`);
+      }
+
+      console.log(`  Fel: ${failure.error}`);
+    }
+  }
+
+  // Visar detaljer för ogiltiga telefonnummer.
+  if (invalidPhoneLinks > 0) {
+    console.log("");
+    console.log("Invalid phone links:");
+
+    for (const phone of phoneLinks) {
+      if (!phone.valid) {
+        console.log(`- Sida: ${phone.sourcePage}`);
+        console.log(`  Länk: ${phone.url}`);
+        console.log(`  Nummer: ${phone.phoneNumber}`);
+        console.log(`  Fel: ${phone.error || "Okänt fel"}`);
+      }
+    }
+  }
+
   return {
     internalPassed,
     internalFailed,
+
     externalPassed,
     externalFailed,
 
-    // Nya resultat för Link Intent.
+    linkFailures,
+
+    phoneLinks,
+
     intentFailures,
     intentFailed: intentFailures.length,
   };

@@ -6,7 +6,7 @@ import { checkLinks } from "../src/checks/links";
 test("Links check", async ({ page }) => {
 
   // Webbplatsen vi testar
-  const url = "https://digitalkontakt.se/";
+  const url = "https://cktaxi.se/";
 
   // Hittar automatiskt webbplatsens interna sidor
   const pageResult = await checkPages(

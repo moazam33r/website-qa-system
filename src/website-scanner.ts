@@ -683,7 +683,7 @@ export async function scanWebsite(
   });
 
 
-  // =======================================================
+    // =======================================================
   // 11. LÄNKAR
   // =======================================================
 
@@ -694,76 +694,331 @@ export async function scanWebsite(
     "Kontrollerar interna och externa länkar..."
   );
 
+  // Kör den kompletta länkkontrollen.
+  //
+  // Den kontrollerar:
+  // - interna länkar
+  // - externa länkar
+  // - tel:-länkar
+  // - callto:-länkar
+  // - Link Intent
+  // - giltigheten på telefonnummer
   const linkResult = await checkLinks(
     page,
     url,
     pages
   );
 
-  // Räknar både trasiga länkar och länkar som verkar
-// leda till fel typ av sida.
-const totalLinkFailures =
-  linkResult.internalFailed +
-  linkResult.externalFailed;
+  // =======================================================
+  // SAMMANFATTNING
+  // =======================================================
 
-const totalIntentFailures =
-  linkResult.intentFailed;
+  // Räknar alla HTTP/HTTPS-länkar.
+  const totalHttpLinks =
+    linkResult.internalPassed +
+    linkResult.internalFailed +
+    linkResult.externalPassed +
+    linkResult.externalFailed;
 
-const totalLinks =
-  linkResult.internalPassed +
-  linkResult.internalFailed +
-  linkResult.externalPassed +
-  linkResult.externalFailed;
+  // Räknar trasiga HTTP/HTTPS-länkar.
+  const totalLinkFailures =
+    linkResult.internalFailed +
+    linkResult.externalFailed;
+
+  // Räknar alla telefonlänkar.
+  const totalPhoneLinks =
+    linkResult.phoneLinks.length;
+
+  // Räknar giltiga telefonlänkar.
+  const validPhoneLinks =
+    linkResult.phoneLinks.filter(
+      (phone) => phone.valid
+    ).length;
+
+  // Räknar ogiltiga telefonlänkar.
+  const invalidPhoneLinks =
+    linkResult.phoneLinks.filter(
+      (phone) => !phone.valid
+    ).length;
+
+  // Räknar möjliga Link Intent-problem.
+  const totalIntentFailures =
+    linkResult.intentFailed;
 
 
-// Om det finns trasiga länkar är resultatet FAIL.
-if (totalLinkFailures > 0) {
+  // =======================================================
+  // TRASIGA HTTP-LÄNKAR
+  // =======================================================
 
-  results.push({
-    name: "Länkar",
-    status: "FAIL",
-    message:
-      `${totalLinkFailures} länkar fungerar inte`,
-  });
+  // Skapar detaljerad information om varje trasig länk.
+  //
+  // Informationen skickas vidare till:
+  // - PDF-rapporten
+  // - AI-analysen
+  // - terminalrapporten
+  const linkFailureDetails =
+    linkResult.linkFailures
+      .map((failure) => {
+
+        // Visar HTTP-status om en sådan finns.
+        const statusText =
+          failure.status !== undefined
+            ? `\n  Status: ${failure.status}`
+            : "";
+
+        return (
+          `- Sida: ${failure.sourcePage}\n` +
+          `  Länk: ${failure.url}\n` +
+          `  Typ: ${failure.type}` +
+          `${statusText}\n` +
+          `  Fel: ${failure.error}`
+        );
+      })
+      .join("\n\n");
 
 
-// Om själva länkarna fungerar men någon länk
-// verkar leda till fel sida får vi WARNING.
-} else if (totalIntentFailures > 0) {
+  // =======================================================
+  // LINK INTENT-FEL
+  // =======================================================
 
-  // Skapar detaljer för AI:n och PDF-rapporten.
-  const intentDetails =
+  // Skapar detaljer om länkar som verkar leda
+  // till fel typ av sida.
+  const intentFailureDetails =
     linkResult.intentFailures
-      .map(
-        (failure) =>
-          `"${failure.linkText}" → ${failure.expected} ` +
-          `(faktisk destination: ${failure.targetUrl})`
-      )
-      .join("\n");
+      .map((failure) => {
 
-  results.push({
-    name: "Länkar",
-    status: "WARNING",
-    message:
-      `${totalLinks} länkar fungerar, men ` +
-      `${totalIntentFailures} länkar verkar leda till fel sida.\n` +
-      intentDetails,
-  });
+        return (
+          `- Sida: ${failure.sourcePage}\n` +
+          `  Länktext: "${failure.linkText}"\n` +
+          `  Förväntat syfte: ${failure.expected}\n` +
+          `  Destination: ${failure.targetUrl}\n` +
+          `  Titel: ${failure.targetTitle || "Saknas"}\n` +
+          `  H1: ${failure.targetHeading || "Saknas"}`
+        );
+      })
+      .join("\n\n");
 
 
-// Om både länkar och destinationer ser rätt ut
-// blir resultatet PASS.
-} else {
+  // =======================================================
+  // OGILTIGA TELEFONNUMMER
+  // =======================================================
 
-  results.push({
-    name: "Länkar",
-    status: "PASS",
-    message:
-      `${totalLinks} länkar fungerar och ` +
-      `inga tydliga felaktiga destinationer hittades`,
-  });
-}
+  // Hämtar endast de telefonnummer som inte är giltiga.
+  const invalidPhoneResults =
+    linkResult.phoneLinks.filter(
+      (phone) => !phone.valid
+    );
 
+
+  // -------------------------------------------------------
+  // GRUPPERA SAMMA OGILTIGA NUMMER
+  // -------------------------------------------------------
+
+  // Samma telefonnummer kan förekomma i exempelvis
+  // header och footer på flera olika sidor.
+  //
+  // Därför grupperar vi samma nummer så att PDF-rapporten
+  // inte behöver visa samma fel om och om igen.
+  const groupedInvalidPhones =
+    new Map<
+      string,
+      {
+        phoneNumber: string;
+        error: string;
+        pages: string[];
+      }
+    >();
+
+  for (const phone of invalidPhoneResults) {
+
+    // Använder själva telefonnumret som nyckel.
+    const existing =
+      groupedInvalidPhones.get(
+        phone.phoneNumber
+      );
+
+    if (existing) {
+
+      // Undviker att samma sida läggs till flera gånger.
+      if (
+        !existing.pages.includes(
+          phone.sourcePage
+        )
+      ) {
+        existing.pages.push(
+          phone.sourcePage
+        );
+      }
+
+    } else {
+
+      // Skapar en ny grupp för telefonnumret.
+      groupedInvalidPhones.set(
+        phone.phoneNumber,
+        {
+          phoneNumber:
+            phone.phoneNumber,
+
+          error:
+            phone.error ||
+            "Okänt fel",
+
+          pages: [
+            phone.sourcePage,
+          ],
+        }
+      );
+    }
+  }
+
+
+  // =======================================================
+  // FORMATERA OGILTIGA TELEFONNUMMER
+  // =======================================================
+
+  const invalidPhoneDetails =
+    Array.from(
+      groupedInvalidPhones.values()
+    )
+      .map((phone) => {
+
+        // Gör varje sida till en separat rad.
+        const pageList =
+          phone.pages
+            .map(
+              (pageUrl) =>
+                `    - ${pageUrl}`
+            )
+            .join("\n");
+
+        return (
+          `- Telefonnummer: ${phone.phoneNumber}\n` +
+          `  Fel: ${phone.error}\n` +
+          `  Förekommer på ${phone.pages.length} sida/sidor:\n` +
+          `${pageList}`
+        );
+      })
+      .join("\n\n");
+
+
+  // =======================================================
+  // BESTÄM QA-STATUS
+  // =======================================================
+
+  // Trasiga HTTP/HTTPS-länkar är FAIL.
+  if (totalLinkFailures > 0) {
+
+    results.push({
+      name: "Länkar",
+      status: "FAIL",
+
+      message:
+        `HTTP/HTTPS-länkar: ${totalHttpLinks} kontrollerade\n` +
+        `Interna: ${linkResult.internalPassed} godkända, ` +
+        `${linkResult.internalFailed} fel\n` +
+        `Externa: ${linkResult.externalPassed} godkända, ` +
+        `${linkResult.externalFailed} fel\n\n` +
+
+        `Trasiga länkar:\n\n` +
+        linkFailureDetails +
+
+        // Om det även finns ogiltiga telefonnummer
+        // lägger vi till dem efter HTTP-felen.
+        (
+          invalidPhoneLinks > 0
+            ? `\n\n` +
+              `Telefonlänkar: ${totalPhoneLinks} hittade\n` +
+              `${validPhoneLinks} giltiga\n` +
+              `${invalidPhoneLinks} ogiltiga\n\n` +
+              `Ogiltiga telefonnummer:\n\n` +
+              invalidPhoneDetails
+            : ""
+        ),
+    });
+
+
+  // =======================================================
+  // LINK INTENT WARNING
+  // =======================================================
+
+  } else if (totalIntentFailures > 0) {
+
+    results.push({
+      name: "Länkar",
+      status: "WARNING",
+
+      message:
+        `HTTP/HTTPS-länkar: ${totalHttpLinks} kontrollerade\n` +
+        `Interna: ${linkResult.internalPassed} godkända\n` +
+        `Externa: ${linkResult.externalPassed} godkända\n\n` +
+
+        `⚠ ${totalIntentFailures} länkar verkar kunna ` +
+        `leda till fel typ av sida.\n\n` +
+
+        `Link Intent-detaljer:\n\n` +
+        intentFailureDetails +
+
+        (
+          invalidPhoneLinks > 0
+            ? `\n\n` +
+              `Telefonlänkar: ${totalPhoneLinks} hittade\n` +
+              `${validPhoneLinks} giltiga\n` +
+              `${invalidPhoneLinks} ogiltiga\n\n` +
+              `Ogiltiga telefonnummer:\n\n` +
+              invalidPhoneDetails
+            : ""
+        ),
+    });
+
+
+  // =======================================================
+  // OGILTIGA TELEFONNUMMER
+  // =======================================================
+
+  } else if (invalidPhoneLinks > 0) {
+
+    // HTTP-länkar och Link Intent fungerar,
+    // men minst ett telefonnummer är ogiltigt.
+    results.push({
+      name: "Länkar",
+      status: "WARNING",
+
+      message:
+        `HTTP/HTTPS-länkar: ${totalHttpLinks} kontrollerade\n` +
+        `Interna: ${linkResult.internalPassed} godkända\n` +
+        `Externa: ${linkResult.externalPassed} godkända\n\n` +
+
+        `Telefonlänkar: ${totalPhoneLinks} hittade\n` +
+        `${validPhoneLinks} giltiga\n` +
+        `${invalidPhoneLinks} ogiltiga\n\n` +
+
+        `Ogiltiga telefonnummer:\n\n` +
+        invalidPhoneDetails,
+    });
+
+
+  // =======================================================
+  // ALLT GODKÄNT
+  // =======================================================
+
+  } else {
+
+    results.push({
+      name: "Länkar",
+      status: "PASS",
+
+      message:
+        `HTTP/HTTPS-länkar: ${totalHttpLinks} kontrollerade\n` +
+        `Interna: ${linkResult.internalPassed} godkända\n` +
+        `Externa: ${linkResult.externalPassed} godkända\n\n` +
+
+        `Telefonlänkar: ${totalPhoneLinks} hittade\n` +
+        `${validPhoneLinks} giltiga\n\n` +
+
+        `Alla kontrollerade länkar fungerar och ` +
+        `inga tydliga felaktiga destinationer hittades`,
+    });
+  }
 
   // =======================================================
   // 12. BILDER
