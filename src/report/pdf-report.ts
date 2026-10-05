@@ -1,21 +1,20 @@
 // ============================================================
 // WEBSITE QA SYSTEM
-// PDF-RAPPORT
+// PDF-RAPPORT (ny design)
 // ============================================================
 //
-// Den här filen skapar PDF-rapporter från QA-resultaten.
+// Förändringar jämfört med förra versionen:
 //
-// Viktigt:
-// Den här versionen använder INTE:
-// - bufferPages
-// - switchToPage
-// - bufferedPageRange
-// - pageAdded
+// - Fynd grupperas per PROBLEM (inte per sida) och får
+//   prioritet (Kritisk / Viktig / Liten), åtgärd och insats.
+// - Förstasidan har sammanfattning + "Gör först".
+// - Prestanda visas som staplar med målvärde 90.
+// - "Det som fungerar" ersätter upprepade problemlistor.
+// - AI-analysens dubblettavsnitt döljs (se HIDE_DUPLICATE_AI_SECTIONS).
+// - Alla ursprungliga kontroller finns kvar i en teknisk bilaga.
+// - Nya färger: plommon (kritiskt), gul (viktigt), blågrön (OK).
 //
-// Detta gör PDF-genereringen enklare och förhindrar
-// rekursiva sidbyten som kan orsaka:
-//
-// RangeError: Maximum call stack size exceeded
+// Fortfarande INGEN bufferPages / switchToPage / pageAdded.
 //
 // ============================================================
 
@@ -29,39 +28,48 @@ import {
 } from "./qa-report";
 
 // ============================================================
+// INSTÄLLNINGAR
+// ============================================================
+
+// Dölj AI-avsnitt som bara upprepar fynden.
+const HIDE_DUPLICATE_AI_SECTIONS = true;
+
+// Ta med alla ursprungliga kontroller sist i rapporten.
+const INCLUDE_TECHNICAL_APPENDIX = true;
+
+// Målvärde för prestanda (Googles "bra").
+const PERFORMANCE_TARGET = 90;
+
+// ============================================================
 // DATASTRUKTURER
 // ============================================================
 
-// Data för en vanlig PDF-rapport.
 export interface PDFReportData {
-
-    // Webbplatsen som testades.
     websiteUrl: string;
-
-    // Alla QA-resultat.
     results: QACheckResult[];
-
-    // Valfri AI-analys.
     aiAnalysis?: string;
 }
 
-// Data för en CSV-rapport.
 export interface CSVPDFReportItem {
-
-    // Om skanningen lyckades.
     success: boolean;
-
-    // Webbplatsens URL.
     websiteUrl: string;
-
-    // QA-resultat.
     results: QACheckResult[];
-
-    // Eventuellt fel.
     error?: string;
-
-    // Valfri AI-analys.
     aiAnalysis?: string;
+}
+
+type Priority = "Kritisk" | "Viktig" | "Liten";
+
+// Ett fynd = ett problem, oavsett hur många sidor det finns på.
+interface Finding {
+    priority: Priority;
+    category: string;
+    title: string;
+    description?: string;
+    pages: string[];
+    scope?: string;
+    action?: string;
+    effort?: string;
 }
 
 // ============================================================
@@ -69,45 +77,29 @@ export interface CSVPDFReportItem {
 // ============================================================
 
 const COLORS = {
-
-    // Mörk huvudfärg.
-    dark: "#17202a",
-
-    // Vanlig text.
-    text: "#212529",
-
-    // Sekundär text.
-    secondaryText: "#6c757d",
-
-    // Dämpad text.
-    muted: "#495057",
-
-    // Kantlinjer.
-    border: "#d9dee3",
-
-    // Ljus bakgrund.
-    light: "#f7f9fb",
-
-    // Vit.
+    dark: "#0f2a26",
+    text: "#0f2a26",
+    secondaryText: "#3f5651",
+    muted: "#3f5651",
+    border: "#c5d3cf",
+    light: "#eaf0ee",
     white: "#ffffff",
 
-    // PASS.
-    pass: "#198754",
+    // OK (blågrön).
+    pass: "#0e7490",
+    passBackground: "#ddf0f5",
 
-    // PASS-bakgrund.
-    passBackground: "#eaf7ef",
+    // Varning (gul/brun).
+    warning: "#8a5a00",
+    warningBackground: "#fdf1c7",
 
-    // WARNING.
-    warning: "#d97706",
+    // Kritiskt (plommon).
+    fail: "#9d174d",
+    failBackground: "#fce7f0",
 
-    // WARNING-bakgrund.
-    warningBackground: "#fff4e5",
-
-    // FAIL.
-    fail: "#dc3545",
-
-    // FAIL-bakgrund.
-    failBackground: "#fdecec",
+    // Liten / information (grå).
+    low: "#213b36",
+    lowBackground: "#d9e4e1",
 };
 
 // ============================================================
@@ -115,303 +107,560 @@ const COLORS = {
 // ============================================================
 
 const PAGE = {
-
-    // Vänster/höger marginal.
     margin: 50,
-
-    // A4-bredd minus marginaler.
     contentWidth: 495,
+    // Innehåll får inte gå under denna linje (A4 = 842).
+    bottom: 782,
 };
 
 // ============================================================
 // HJÄLPFUNKTIONER
 // ============================================================
 
-// Räknar PASS, WARNING och FAIL.
 function getResultCounts(
     results: QACheckResult[]
 ) {
-
     return {
-
         pass: results.filter(
-            (result) =>
-                result.status === "PASS"
+            (r) => r.status === "PASS"
         ).length,
-
         warning: results.filter(
-            (result) =>
-                result.status === "WARNING"
+            (r) => r.status === "WARNING"
         ).length,
-
         fail: results.filter(
-            (result) =>
-                result.status === "FAIL"
+            (r) => r.status === "FAIL"
         ).length,
     };
 }
 
-// Bestämmer övergripande status.
 function getOverallStatus(
     results: QACheckResult[]
 ): "PASS" | "WARNING" | "FAIL" {
-
-    const counts =
-        getResultCounts(results);
-
-    if (counts.fail > 0) {
-        return "FAIL";
-    }
-
-    if (counts.warning > 0) {
-        return "WARNING";
-    }
-
+    const counts = getResultCounts(results);
+    if (counts.fail > 0) return "FAIL";
+    if (counts.warning > 0) return "WARNING";
     return "PASS";
 }
 
-// Hämtar färg baserat på status.
-function getStatusColor(
-    status: string
-): string {
-
-    if (status === "PASS") {
-        return COLORS.pass;
-    }
-
-    if (status === "WARNING") {
-        return COLORS.warning;
-    }
-
+function getStatusColor(status: string): string {
+    if (status === "PASS") return COLORS.pass;
+    if (status === "WARNING") return COLORS.warning;
     return COLORS.fail;
 }
 
-// Hämtar bakgrund baserat på status.
-function getStatusBackground(
-    status: string
-): string {
-
-    if (status === "PASS") {
-        return COLORS.passBackground;
-    }
-
-    if (status === "WARNING") {
-        return COLORS.warningBackground;
-    }
-
+function getStatusBackground(status: string): string {
+    if (status === "PASS") return COLORS.passBackground;
+    if (status === "WARNING") return COLORS.warningBackground;
     return COLORS.failBackground;
 }
 
-// Hämtar dagens datum/tid.
-function getReportDate(): string {
+function getOverallHeadline(
+    status: "PASS" | "WARNING" | "FAIL"
+): string {
+    if (status === "FAIL") return "Behöver åtgärdas";
+    if (status === "WARNING") return "Kan förbättras";
+    return "Inga problem";
+}
 
-    return new Date().toLocaleString(
-        "sv-SE"
-    );
+function getReportDate(): string {
+    return new Date().toLocaleString("sv-SE");
+}
+
+// Mäter höjden på en text innan den ritas.
+function measure(
+    document: PDFKit.PDFDocument,
+    text: string,
+    width: number,
+    font: string,
+    size: number,
+    lineGap = 2
+): number {
+    document.font(font).fontSize(size);
+    return document.heightOfString(text, {
+        width,
+        lineGap,
+    });
 }
 
 // ============================================================
 // TEXTRENSNING
 // ============================================================
 
-// Tar bort meddelanden som inte är användbara
-// i den professionella PDF-rapporten.
-function cleanMessage(
-    message: string
-): string {
+function cleanMessage(message: string): string {
+    if (!message) return "";
 
-    if (!message) {
-        return "";
-    }
-
-    let cleaned =
-        message
-            .replace(
-                /Initial server response time was short \(Root document took 0 ms\)/gi,
-                ""
-            )
-            .replace(
-                /Root document took 0 ms/gi,
-                ""
-            )
-            .replace(
-                /\s+/g,
-                " "
-            )
-            .trim();
-
-    return cleaned;
+    return message
+        .replace(
+            /Initial server response time was short \(Root document took 0 ms\)/gi,
+            ""
+        )
+        .replace(/Root document took 0 ms/gi, "")
+        .replace(/\s+/g, " ")
+        .trim();
 }
 
-// Begränsar väldigt långa texter.
 function shortenText(
     text: string,
     maxLength: number
 ): string {
+    const cleaned = cleanMessage(text);
+    if (cleaned.length <= maxLength) return cleaned;
+    return cleaned.substring(0, maxLength - 3) + "...";
+}
 
-    const cleaned =
-        cleanMessage(text);
+function toPath(url: string): string {
+    try {
+        const parsed = new URL(url);
+        return parsed.pathname || "/";
+    } catch {
+        return url;
+    }
+}
 
-    if (
-        cleaned.length <=
-        maxLength
-    ) {
-        return cleaned;
+// ============================================================
+// FYND: TOLKA QA-RESULTAT
+// ============================================================
+//
+// QA-resultaten innehåller bara name, status och message.
+// Här tolkas meddelandena så att varje problem blir ETT fynd.
+// Det som inte kan tolkas blir ett generellt fynd.
+
+// Hur många sidor som testades (t.ex. "6/6 sidor fungerar").
+function getTotalPages(
+    results: QACheckResult[]
+): number {
+    const pageResult = results.find(
+        (r) => /^sidor$/i.test(r.name.trim())
+    );
+
+    const match = pageResult?.message?.match(
+        /(\d+)\s*\/\s*(\d+)/
+    );
+
+    return match ? Number(match[2]) : 0;
+}
+
+// Åtgärd och insats per typ av fynd.
+// Första träffen vinner.
+const ACTION_RULES: {
+    test: RegExp;
+    action: string;
+    effort: string;
+}[] = [
+    {
+        test: /platshållar/i,
+        action:
+            "Ersätt med det riktiga numret. Finns det i sidfot eller mall räcker en ändring.",
+        effort: "5 min",
+    },
+    {
+        test: /ogiltigt telefonnummer/i,
+        action:
+            "Rätta numret så att det följer svensk nummerplan.",
+        effort: "5 min",
+    },
+    {
+        test: /cookie|integritet|gdpr/i,
+        action:
+            "Skapa en integritetspolicy, länka den i sidfoten och vid formulären. Lägg till cookie-information om cookies används.",
+        effort: "1–2 h",
+    },
+    {
+        test: /prestanda/i,
+        action:
+            "Hitta största flaskhalsen (LCP, bilder, JavaScript) och åtgärda den. Mål: 90+.",
+        effort: "[uppskattas efter analys]",
+    },
+    {
+        test: /meta description/i,
+        action:
+            "Skriv en unik beskrivning på cirka 150 tecken per sida, med ort och tjänst.",
+        effort: "30 min",
+    },
+    {
+        test: /h1/i,
+        action:
+            "Behåll en H1 per sida och gör övriga till H2.",
+        effort: "5 min",
+    },
+    {
+        test: /validering|telefonfält/i,
+        action:
+            "Lägg till mönster- eller typkontroll (type=\"tel\") och ett tydligt felmeddelande.",
+        effort: "15 min",
+    },
+    {
+        test: /stavning|textfel/i,
+        action:
+            "Rätta orden. Rapporten bör lista varje ord med sida och förslag.",
+        effort: "15 min",
+    },
+    {
+        test: /google business/i,
+        action:
+            "Länka företagsprofilen från kontaktsidan eller sidfoten, om en profil finns.",
+        effort: "10 min",
+    },
+];
+
+// Översätter ett SEO-problem och bestämmer prioritet.
+function describeSeoIssue(issue: string): {
+    title: string;
+    description?: string;
+    priority: Priority;
+} {
+    if (/meta description/i.test(issue)) {
+        return {
+            title: "Meta description saknas",
+            description:
+                "Googles söksnippet blir slumpmässig text från sidan.",
+            priority: "Viktig",
+        };
     }
 
-    return (
-        cleaned.substring(
-            0,
-            maxLength - 3
-        ) + "..."
+    if (/multiple h1/i.test(issue)) {
+        const count = issue.match(/\((\d+)\)/)?.[1];
+        return {
+            title: count
+                ? `Flera H1-rubriker (${count})`
+                : "Flera H1-rubriker",
+            description: "Bör vara en H1 per sida.",
+            priority: "Liten",
+        };
+    }
+
+    if (/(missing|no).*h1|h1.*missing/i.test(issue)) {
+        return {
+            title: "H1-rubrik saknas",
+            priority: "Viktig",
+        };
+    }
+
+    if (/title.*missing|missing.*title/i.test(issue)) {
+        return {
+            title: "Sidtitel saknas",
+            priority: "Viktig",
+        };
+    }
+
+    return { title: issue, priority: "Viktig" };
+}
+
+// SEO: "7 SEO-varningar - URL - Problem - URL - Problem ..."
+function parseSeoFindings(
+    result: QACheckResult
+): Finding[] {
+    const parts = cleanMessage(result.message)
+        .split(/\s+-\s+/)
+        .map((part) => part.trim());
+
+    const groups = new Map<string, string[]>();
+
+    for (let i = 1; i < parts.length - 1; i++) {
+        if (
+            /^https?:\/\//i.test(parts[i]) &&
+            !/^https?:\/\//i.test(parts[i + 1])
+        ) {
+            const issue = parts[i + 1];
+            const list = groups.get(issue) ?? [];
+            list.push(parts[i]);
+            groups.set(issue, list);
+            i++;
+        }
+    }
+
+    const findings: Finding[] = [];
+
+    for (const [issue, pages] of groups) {
+        const described = describeSeoIssue(issue);
+
+        findings.push({
+            priority: described.priority,
+            category: result.name,
+            title: described.title,
+            description: described.description,
+            pages,
+        });
+    }
+
+    return findings;
+}
+
+// Länkar: hittar ogiltiga telefonnummer och samlar sidorna.
+function parseLinkFindings(
+    result: QACheckResult
+): Finding[] {
+    const message = cleanMessage(result.message);
+
+    const startIndex = message.search(
+        /Ogiltiga telefonnummer/i
     );
+
+    if (startIndex === -1) return [];
+
+    const counts = message.match(
+        /Telefonlänkar:\s*(\d+)\s*hittade\s*(\d+)\s*giltiga\s*(\d+)\s*ogiltiga/i
+    );
+
+    const segments = message
+        .slice(startIndex)
+        .split(/Telefonnummer:/i)
+        .slice(1);
+
+    const findings: Finding[] = [];
+
+    for (const segment of segments) {
+        const number = segment
+            .match(/^\s*([+\d][\d\s()+-]*?)\s+Fel:/)?.[1]
+            ?.trim();
+
+        if (!number) continue;
+
+        const error = segment
+            .match(/Fel:\s*(.+?)\s+Förekommer/)?.[1]
+            ?.trim();
+
+        const pages =
+            segment.match(/https?:\/\/[^\s]+/g) ?? [];
+
+        const isPlaceholder = /0{6,}/.test(number);
+
+        const total = counts
+            ? ` ${counts[3]} av ${counts[1]} telefonlänkar är ogiltiga.`
+            : "";
+
+        findings.push({
+            priority: isPlaceholder ? "Kritisk" : "Viktig",
+            category: result.name,
+            title: isPlaceholder
+                ? `Platshållarnummer ${number}`
+                : `Ogiltigt telefonnummer ${number}`,
+            description:
+                (error ?? "Ogiltigt telefonnummer.") + total,
+            pages,
+        });
+    }
+
+    return findings;
+}
+
+// Allt som inte har en egen tolkning.
+function buildGenericFinding(
+    result: QACheckResult
+): Finding {
+    const message = cleanMessage(result.message);
+
+    // Prestanda: "Desktop: 97/100 | Mobile: 64/100"
+    if (/prestanda|performance/i.test(result.name)) {
+        const desktop = message.match(/Desktop:\s*(\d+)/i)?.[1];
+        const mobile = message.match(
+            /(?:Mobile|Mobil):\s*(\d+)/i
+        )?.[1];
+
+        if (mobile) {
+            return {
+                priority:
+                    result.status === "FAIL"
+                        ? "Kritisk"
+                        : "Viktig",
+                category: result.name,
+                title: `Mobilprestanda ${mobile}/100`,
+                description: desktop
+                    ? `Desktop är ${desktop}/100, så problemet gäller främst mobil.`
+                    : undefined,
+                pages: [],
+            };
+        }
+    }
+
+    const priority: Priority =
+        result.status === "FAIL" ||
+        /cookie|gdpr/i.test(result.name)
+            ? "Kritisk"
+            : /google business/i.test(result.name)
+              ? "Liten"
+              : "Viktig";
+
+    return {
+        priority,
+        category: result.name,
+        title: shortenText(message, 160) || result.name,
+        pages: [],
+    };
+}
+
+function deriveFindings(
+    results: QACheckResult[]
+): Finding[] {
+    const findings: Finding[] = [];
+
+    for (const result of results) {
+        if (result.status === "PASS") continue;
+
+        let derived: Finding[] = [];
+
+        if (/seo/i.test(result.name)) {
+            derived = parseSeoFindings(result);
+        } else if (/länk/i.test(result.name)) {
+            derived = parseLinkFindings(result);
+        }
+
+        if (derived.length === 0) {
+            derived = [buildGenericFinding(result)];
+        }
+
+        findings.push(...derived);
+    }
+
+    // Åtgärd, insats och omfattning.
+    for (const finding of findings) {
+        const key = `${finding.category} ${finding.title}`;
+
+        const rule = ACTION_RULES.find((r) =>
+            r.test.test(key)
+        );
+
+        finding.action =
+            rule?.action ??
+            "Granska resultatet i den tekniska bilagan och åtgärda.";
+
+        finding.effort = rule?.effort ?? "[uppskattas]";
+
+        finding.scope =
+            finding.pages.length === 0 &&
+            /cookie|gdpr|google|prestanda/i.test(
+                finding.category
+            )
+                ? "Hela webbplatsen"
+                : finding.pages.length === 0
+                  ? "Se teknisk bilaga"
+                  : undefined;
+    }
+
+    const order: Record<Priority, number> = {
+        Kritisk: 0,
+        Viktig: 1,
+        Liten: 2,
+    };
+
+    // Stabil sortering: prioritet först.
+    return findings
+        .map((finding, index) => ({ finding, index }))
+        .sort(
+            (a, b) =>
+                order[a.finding.priority] -
+                    order[b.finding.priority] ||
+                a.index - b.index
+        )
+        .map((entry) => entry.finding);
+}
+
+// "Alla 6 sidor" eller "/om-oss/ · /taxi-ed/ ..."
+function formatPages(
+    finding: Finding,
+    totalPages: number
+): string {
+    if (finding.pages.length === 0) {
+        return finding.scope ?? "";
+    }
+
+    if (
+        totalPages > 0 &&
+        finding.pages.length >= totalPages
+    ) {
+        return `Alla ${totalPages} sidor`;
+    }
+
+    const shown = finding.pages
+        .slice(0, 6)
+        .map(toPath)
+        .join("  ·  ");
+
+    const rest = finding.pages.length - 6;
+
+    return rest > 0 ? `${shown}  +${rest} till` : shown;
 }
 
 // ============================================================
 // SIDHUVUD
 // ============================================================
 
-// Lägger ett sidhuvud på en sida.
 function addReportHeader(
     document: PDFKit.PDFDocument,
     websiteUrl: string,
     reportTitle: string
 ): void {
-
-    // Mörk header.
     document
-        .rect(
-            0,
-            0,
-            document.page.width,
-            96
-        )
-        .fill(
-            COLORS.dark
-        );
+        .rect(0, 0, document.page.width, 96)
+        .fill(COLORS.dark);
 
-    // Projektnamn.
     document
-        .fillColor(
-            COLORS.white
-        )
-        .font(
-            "Helvetica-Bold"
-        )
+        .fillColor(COLORS.white)
+        .font("Helvetica-Bold")
         .fontSize(20)
-        .text(
-            "Website QA System",
-            50,
-            25
-        );
+        .text("Website QA System", 50, 25);
 
-    // Rapporttyp.
     document
-        .fillColor(
-            "#d9e2ec"
-        )
-        .font(
-            "Helvetica"
-        )
+        .fillColor("#d9e4e1")
+        .font("Helvetica")
         .fontSize(10)
-        .text(
-            reportTitle,
-            50,
-            53
-        );
+        .text(reportTitle, 50, 53);
 
-    // URL.
     document
-        .fillColor(
-            "#d9e2ec"
-        )
+        .fillColor("#d9e4e1")
         .fontSize(9)
-        .text(
-            websiteUrl,
-            50,
-            70,
-            {
-                width:
-                    document.page.width -
-                    100,
-            }
-        );
+        .text(websiteUrl, 50, 70, {
+            width: document.page.width - 100,
+        });
 
-    // Börja innehållet under headern.
     document.y = 118;
 
-    document
-        .fillColor(
-            COLORS.text
-        )
-        .font(
-            "Helvetica"
-        );
+    document.fillColor(COLORS.text).font("Helvetica");
 }
 
-// Header för fortsättningssidor.
 function addContinuationHeader(
     document: PDFKit.PDFDocument,
     title: string
 ): void {
-
     document
-        .fillColor(
-            COLORS.dark
-        )
-        .font(
-            "Helvetica-Bold"
-        )
+        .fillColor(COLORS.dark)
+        .font("Helvetica-Bold")
         .fontSize(12)
-        .text(
-            title,
-            PAGE.margin,
-            42
-        );
+        .text(title, PAGE.margin, 42);
 
     document
-        .strokeColor(
-            COLORS.border
-        )
+        .strokeColor(COLORS.border)
         .lineWidth(0.8)
-        .moveTo(
-            PAGE.margin,
-            62
-        )
-        .lineTo(
-            document.page.width -
-            PAGE.margin,
-            62
-        )
+        .moveTo(PAGE.margin, 62)
+        .lineTo(document.page.width - PAGE.margin, 62)
         .stroke();
 
     document.y = 82;
 
-    document.font(
-        "Helvetica"
-    );
+    document.font("Helvetica");
 }
 
 // ============================================================
 // NY SIDA
 // ============================================================
 
-// Skapar en ny sida på ett kontrollerat sätt.
-//
-// Viktigt:
-// Den här funktionen anropas endast direkt från kod.
-// Den används aldrig från ett pageAdded-event.
 function startNewPage(
     document: PDFKit.PDFDocument,
     title: string
 ): void {
-
     document.addPage();
+    addContinuationHeader(document, title);
+}
 
-    addContinuationHeader(
-        document,
-        title
-    );
+// Börjar ny sida om innehållet inte får plats.
+function ensureSpace(
+    document: PDFKit.PDFDocument,
+    height: number,
+    title: string
+): void {
+    if (document.y + height > PAGE.bottom) {
+        startNewPage(document, title);
+    }
 }
 
 // ============================================================
@@ -423,67 +672,34 @@ function addSectionTitle(
     title: string,
     subtitle?: string
 ): void {
-
     document
-        .fillColor(
-            COLORS.dark
-        )
-        .font(
-            "Helvetica-Bold"
-        )
+        .fillColor(COLORS.dark)
+        .font("Helvetica-Bold")
         .fontSize(15)
-        .text(
-            title,
-            PAGE.margin,
-            document.y
-        );
+        .text(title, PAGE.margin, document.y);
 
     if (subtitle) {
-
         document
-            .fillColor(
-                COLORS.secondaryText
-            )
-            .font(
-                "Helvetica"
-            )
+            .fillColor(COLORS.secondaryText)
+            .font("Helvetica")
             .fontSize(8.5)
-            .text(
-                subtitle,
-                PAGE.margin,
-                document.y + 4,
-                {
-                    width:
-                        PAGE.contentWidth,
-                }
-            );
+            .text(subtitle, PAGE.margin, document.y + 4, {
+                width: PAGE.contentWidth,
+            });
     }
 
-    const lineY =
-        document.y + 7;
+    const lineY = document.y + 7;
 
     document
-        .strokeColor(
-            COLORS.border
-        )
+        .strokeColor(COLORS.border)
         .lineWidth(0.8)
-        .moveTo(
-            PAGE.margin,
-            lineY
-        )
-        .lineTo(
-            document.page.width -
-            PAGE.margin,
-            lineY
-        )
+        .moveTo(PAGE.margin, lineY)
+        .lineTo(document.page.width - PAGE.margin, lineY)
         .stroke();
 
-    document.y =
-        lineY + 13;
+    document.y = lineY + 13;
 
-    document.font(
-        "Helvetica"
-    );
+    document.font("Helvetica");
 }
 
 // ============================================================
@@ -492,99 +708,11 @@ function addSectionTitle(
 
 function addWebsiteInformation(
     document: PDFKit.PDFDocument,
-    websiteUrl: string
+    websiteUrl: string,
+    totalPages: number,
+    checkCount: number
 ): void {
-
-    const startY =
-        document.y;
-
-    document
-        .roundedRect(
-            PAGE.margin,
-            startY,
-            PAGE.contentWidth,
-            70,
-            8
-        )
-        .fill(
-            COLORS.light
-        );
-
-    document
-        .fillColor(
-            COLORS.secondaryText
-        )
-        .font(
-            "Helvetica-Bold"
-        )
-        .fontSize(8)
-        .text(
-            "TESTAD WEBBPLATS",
-            65,
-            startY + 12
-        );
-
-    document
-        .fillColor(
-            COLORS.text
-        )
-        .font(
-            "Helvetica-Bold"
-        )
-        .fontSize(10)
-        .text(
-            websiteUrl,
-            65,
-            startY + 27,
-            {
-                width:
-                    PAGE.contentWidth -
-                    30,
-            }
-        );
-
-    document
-        .fillColor(
-            COLORS.secondaryText
-        )
-        .font(
-            "Helvetica"
-        )
-        .fontSize(8)
-        .text(
-            `Rapport skapad: ${getReportDate()}`,
-            65,
-            startY + 47
-        );
-
-    document.y =
-        startY + 88;
-}
-
-// ============================================================
-// ÖVERGRIPANDE STATUS
-// ============================================================
-
-function addOverallStatusCard(
-    document: PDFKit.PDFDocument,
-    status:
-        | "PASS"
-        | "WARNING"
-        | "FAIL"
-): void {
-
-    const color =
-        getStatusColor(
-            status
-        );
-
-    const background =
-        getStatusBackground(
-            status
-        );
-
-    const startY =
-        document.y;
+    const startY = document.y;
 
     document
         .roundedRect(
@@ -594,263 +722,195 @@ function addOverallStatusCard(
             58,
             8
         )
-        .fill(
-            background
-        );
+        .fill(COLORS.light);
 
     document
-        .fillColor(
-            COLORS.secondaryText
-        )
-        .font(
-            "Helvetica-Bold"
-        )
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .text("TESTAD WEBBPLATS", 65, startY + 11);
+
+    document
+        .fillColor(COLORS.text)
+        .font("Helvetica-Bold")
+        .fontSize(11)
+        .text(websiteUrl, 65, startY + 25, {
+            width: PAGE.contentWidth - 30,
+        });
+
+    const pagesText =
+        totalPages > 0 ? `${totalPages} sidor testade · ` : "";
+
+    document
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica")
         .fontSize(8)
         .text(
-            "ÖVERGRIPANDE RESULTAT",
-            68,
-            startY + 11
+            `Skapad ${getReportDate()} · ${pagesText}${checkCount} kontroller`,
+            65,
+            startY + 42
         );
 
-    document
-        .fillColor(
-            color
-        )
-        .font(
-            "Helvetica-Bold"
-        )
-        .fontSize(19)
-        .text(
-            status,
-            68,
-            startY + 26
-        );
-
-    document.y =
-        startY + 73;
-
-    document.font(
-        "Helvetica"
-    );
+    document.y = startY + 76;
 }
 
 // ============================================================
-// STATUSKORT
+// SAMMANFATTNING
 // ============================================================
 
-function addStatusCard(
+function addCountBox(
     document: PDFKit.PDFDocument,
     x: number,
     y: number,
-    width: number,
-    height: number,
-    label: string,
     value: number,
-    status: string
+    label: string,
+    color: string
 ): void {
+    document
+        .roundedRect(x, y, 84, 60, 6)
+        .lineWidth(0.6)
+        .fillAndStroke(COLORS.white, COLORS.border);
 
-    const color =
-        getStatusColor(
-            status
-        );
+    document
+        .fillColor(color)
+        .font("Helvetica-Bold")
+        .fontSize(22)
+        .text(String(value), x + 12, y + 10, {
+            width: 60,
+            lineBreak: false,
+        });
 
-    const background =
-        getStatusBackground(
-            status
-        );
+    document
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica")
+        .fontSize(8)
+        .text(label, x + 12, y + 40, {
+            width: 66,
+            lineBreak: false,
+        });
+}
+
+function addSummaryCard(
+    document: PDFKit.PDFDocument,
+    results: QACheckResult[]
+): void {
+    const counts = getResultCounts(results);
+    const status = getOverallStatus(results);
+    const startY = document.y;
 
     document
         .roundedRect(
-            x,
-            y,
-            width,
-            height,
+            PAGE.margin,
+            startY,
+            PAGE.contentWidth,
+            96,
             8
         )
-        .fill(
-            background
-        );
+        .fill(getStatusBackground(status));
 
     document
-        .rect(
-            x,
-            y,
-            5,
-            height
-        )
-        .fill(
-            color
-        );
-
-    document
-        .fillColor(
-            COLORS.secondaryText
-        )
-        .font(
-            "Helvetica-Bold"
-        )
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica-Bold")
         .fontSize(8)
+        .text("ÖVERGRIPANDE RESULTAT", 66, startY + 16);
+
+    document
+        .fillColor(getStatusColor(status))
+        .font("Helvetica-Bold")
+        .fontSize(18)
         .text(
-            label,
-            x + 16,
-            y + 12
+            getOverallHeadline(status),
+            66,
+            startY + 32,
+            { width: 190 }
         );
 
     document
-        .fillColor(
-            color
-        )
-        .font(
-            "Helvetica-Bold"
-        )
-        .fontSize(22)
-        .text(
-            String(value),
-            x + 16,
-            y + 28
-        );
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica")
+        .fontSize(8.5)
+        .text(`Status: ${status}`, 66, startY + 62);
 
-    document.font(
-        "Helvetica"
-    );
-}
+    const boxesX = PAGE.margin + PAGE.contentWidth - 14 - 268;
+    const boxesY = startY + 18;
 
-// Lägg tre statuskort.
-function addSummaryCards(
-    document: PDFKit.PDFDocument,
-    counts: ReturnType<
-        typeof getResultCounts
-    >
-): void {
-
-    const gap = 12;
-
-    const cardWidth =
-        (
-            PAGE.contentWidth -
-            gap * 2
-        ) / 3;
-
-    const y =
-        document.y;
-
-    addStatusCard(
+    addCountBox(
         document,
-        50,
-        y,
-        cardWidth,
-        64,
-        "PASS",
-        counts.pass,
-        "PASS"
-    );
-
-    addStatusCard(
-        document,
-        50 +
-            cardWidth +
-            gap,
-        y,
-        cardWidth,
-        64,
-        "WARNING",
-        counts.warning,
-        "WARNING"
-    );
-
-    addStatusCard(
-        document,
-        50 +
-            (cardWidth + gap) * 2,
-        y,
-        cardWidth,
-        64,
-        "FAIL",
+        boxesX,
+        boxesY,
         counts.fail,
-        "FAIL"
+        "Misslyckade",
+        COLORS.fail
+    );
+    addCountBox(
+        document,
+        boxesX + 92,
+        boxesY,
+        counts.warning,
+        "Varningar",
+        COLORS.warning
+    );
+    addCountBox(
+        document,
+        boxesX + 184,
+        boxesY,
+        counts.pass,
+        "Godkända",
+        COLORS.pass
     );
 
-    document.y =
-        y + 80;
+    document.y = startY + 114;
+    document.font("Helvetica");
 }
 
 // ============================================================
-// RESULTATKORT
+// GÖR FÖRST
 // ============================================================
 
-// Skriver ett enskilt QA-resultat.
-function addResultCard(
+function addDoFirst(
     document: PDFKit.PDFDocument,
-    result: QACheckResult,
-    continuationTitle =
-        "QA-kontroller – fortsättning"
+    findings: Finding[]
 ): void {
+    const top = findings.slice(0, 3);
 
-    const message =
-        shortenText(
-            result.message,
-            700
-        );
+    if (top.length === 0) return;
 
-    const textX = 125;
+    const textX = PAGE.margin + 44;
+    const textWidth = PAGE.contentWidth - 44 - 14;
 
-    const textWidth =
-        document.page.width -
-        190;
+    // Mät först så att kortet får rätt höjd.
+    const items = top.map((finding) => {
+        const sub = finding.description ?? finding.category;
 
-    document
-        .font(
-            "Helvetica"
-        )
-        .fontSize(8.5);
-
-    const messageHeight =
-        message
-            ? document.heightOfString(
-                  message,
-                  {
-                      width:
-                          textWidth,
-                      lineGap: 2,
-                  }
-              )
-            : 0;
-
-    const cardHeight =
-        Math.max(
-            48,
-            30 +
-                messageHeight +
-                12
-        );
-
-    // Om kortet inte får plats på sidan
-    // börjar vi på nästa sida.
-    if (
-        document.y +
-            cardHeight >
-        document.page.height -
-            70
-    ) {
-
-        startNewPage(
+        const titleH = measure(
             document,
-            continuationTitle
-        );
-    }
-
-    const startY =
-        document.y;
-
-    const color =
-        getStatusColor(
-            result.status
+            finding.title,
+            textWidth,
+            "Helvetica-Bold",
+            9.5
         );
 
-    const background =
-        getStatusBackground(
-            result.status
+        const subH = measure(
+            document,
+            sub,
+            textWidth,
+            "Helvetica",
+            8.5
         );
+
+        return { finding, sub, titleH, subH };
+    });
+
+    const bodyHeight = items.reduce(
+        (sum, item) => sum + item.titleH + item.subH + 14,
+        0
+    );
+
+    const cardHeight = 36 + bodyHeight;
+
+    ensureSpace(document, cardHeight + 10, "Sammanfattning");
+
+    const startY = document.y;
 
     document
         .roundedRect(
@@ -858,109 +918,285 @@ function addResultCard(
             startY,
             PAGE.contentWidth,
             cardHeight,
-            7
+            8
         )
-        .fill(
-            background
-        );
+        .lineWidth(0.6)
+        .fillAndStroke(COLORS.white, COLORS.border);
 
-    // Status.
     document
-        .fillColor(
-            color
-        )
-        .font(
-            "Helvetica-Bold"
-        )
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica-Bold")
         .fontSize(8)
-        .text(
-            result.status,
-            65,
-            startY + 10,
-            {
-                width: 52,
-            }
-        );
+        .text("GÖR FÖRST", PAGE.margin + 14, startY + 14);
 
-    // Kontrollnamn.
-    document
-        .fillColor(
-            COLORS.text
-        )
-        .font(
-            "Helvetica-Bold"
-        )
-        .fontSize(10)
-        .text(
-            result.name,
-            textX,
-            startY + 8,
-            {
-                width:
-                    textWidth,
-            }
-        );
+    let y = startY + 34;
 
-    // Meddelande.
-    if (message) {
+    items.forEach((item, index) => {
+        document
+            .fillColor(COLORS.dark)
+            .font("Helvetica-Bold")
+            .fontSize(18)
+            .text(
+                String(index + 1),
+                PAGE.margin + 14,
+                y - 2,
+                { width: 24, lineBreak: false }
+            );
 
         document
-            .fillColor(
-                COLORS.muted
-            )
-            .font(
-                "Helvetica"
-            )
-            .fontSize(8.5)
-            .text(
-                message,
-                textX,
-                startY + 25,
-                {
-                    width:
-                        textWidth,
-                    lineGap: 2,
-                }
-            );
-    }
+            .fillColor(COLORS.text)
+            .font("Helvetica-Bold")
+            .fontSize(9.5)
+            .text(item.finding.title, textX, y, {
+                width: textWidth,
+                lineGap: 2,
+            });
 
-    document.y =
-        startY +
-        cardHeight +
-        8;
+        document
+            .fillColor(COLORS.muted)
+            .font("Helvetica")
+            .fontSize(8.5)
+            .text(item.sub, textX, y + item.titleH + 2, {
+                width: textWidth,
+                lineGap: 2,
+            });
+
+        y += item.titleH + item.subH + 14;
+    });
+
+    document.y = startY + cardHeight + 18;
+    document.font("Helvetica");
 }
 
 // ============================================================
-// PROBLEMÖVERSIKT
+// FYNDKORT
 // ============================================================
 
-function addProblemSummary(
-    document: PDFKit.PDFDocument,
-    results: QACheckResult[]
-): void {
+function getPriorityColors(priority: Priority): {
+    background: string;
+    text: string;
+} {
+    if (priority === "Kritisk") {
+        return {
+            background: COLORS.fail,
+            text: COLORS.white,
+        };
+    }
 
-    const problems =
-        results.filter(
-            (result) =>
-                result.status ===
-                    "WARNING" ||
-                result.status ===
-                    "FAIL"
+    if (priority === "Viktig") {
+        return {
+            background: "#fde9a8",
+            text: "#6b3a05",
+        };
+    }
+
+    return {
+        background: COLORS.lowBackground,
+        text: COLORS.low,
+    };
+}
+
+function addFindingCard(
+    document: PDFKit.PDFDocument,
+    finding: Finding,
+    totalPages: number
+): void {
+    const cardX = PAGE.margin;
+    const contentX = cardX + 14 + 78;
+    const contentWidth = cardX + PAGE.contentWidth - 14 - contentX;
+
+    const pagesText = formatPages(finding, totalPages);
+    const effortText = finding.effort ?? "";
+
+    // ---- Mät ----
+    const titleH = measure(
+        document,
+        finding.title,
+        contentWidth,
+        "Helvetica-Bold",
+        9.5
+    );
+
+    const descH = finding.description
+        ? measure(
+              document,
+              finding.description,
+              contentWidth,
+              "Helvetica",
+              8.5
+          )
+        : 0;
+
+    const pagesH = pagesText
+        ? measure(
+              document,
+              `Berörda sidor: ${pagesText}`,
+              contentWidth,
+              "Courier",
+              8
+          ) + 2
+        : 0;
+
+    const actionH = finding.action
+        ? measure(
+              document,
+              `Åtgärd: ${finding.action}`,
+              contentWidth,
+              "Helvetica",
+              8.5
+          ) + 2
+        : 0;
+
+    const effortH = effortText ? 12 : 0;
+
+    const cardHeight = Math.max(
+        62,
+        14 +
+            titleH +
+            (descH ? descH + 3 : 0) +
+            8 +
+            pagesH +
+            actionH +
+            effortH +
+            12
+    );
+
+    ensureSpace(document, cardHeight + 8, "Fynd efter prioritet");
+
+    const startY = document.y;
+
+    // ---- Kort ----
+    document
+        .roundedRect(cardX, startY, PAGE.contentWidth, cardHeight, 7)
+        .lineWidth(0.6)
+        .fillAndStroke(COLORS.white, COLORS.border);
+
+    // ---- Prioritet ----
+    const colors = getPriorityColors(finding.priority);
+
+    document
+        .roundedRect(cardX + 14, startY + 14, 62, 16, 8)
+        .fill(colors.background);
+
+    document
+        .fillColor(colors.text)
+        .font("Helvetica-Bold")
+        .fontSize(7.5)
+        .text(finding.priority, cardX + 14, startY + 19.5, {
+            width: 62,
+            align: "center",
+            lineBreak: false,
+        });
+
+    document
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica-Bold")
+        .fontSize(7)
+        .text(
+            finding.category.toUpperCase(),
+            cardX + 14,
+            startY + 38,
+            { width: 72 }
         );
+
+    // ---- Innehåll ----
+    let y = startY + 14;
+
+    document
+        .fillColor(COLORS.text)
+        .font("Helvetica-Bold")
+        .fontSize(9.5)
+        .text(finding.title, contentX, y, {
+            width: contentWidth,
+            lineGap: 2,
+        });
+
+    y += titleH + 3;
+
+    if (finding.description) {
+        document
+            .fillColor(COLORS.muted)
+            .font("Helvetica")
+            .fontSize(8.5)
+            .text(finding.description, contentX, y, {
+                width: contentWidth,
+                lineGap: 2,
+            });
+
+        y += descH + 3;
+    }
+
+    y += 8;
+
+    if (pagesText) {
+        document
+            .fillColor(COLORS.secondaryText)
+            .font("Helvetica-Bold")
+            .fontSize(8)
+            .text("Berörda sidor: ", contentX, y, {
+                width: contentWidth,
+                continued: true,
+                lineGap: 2,
+            })
+            .font("Courier")
+            .fillColor(COLORS.text)
+            .text(pagesText);
+
+        y += pagesH;
+    }
+
+    if (finding.action) {
+        document
+            .fillColor(COLORS.secondaryText)
+            .font("Helvetica-Bold")
+            .fontSize(8.5)
+            .text("Åtgärd: ", contentX, y, {
+                width: contentWidth,
+                continued: true,
+                lineGap: 2,
+            })
+            .font("Helvetica")
+            .fillColor(COLORS.text)
+            .text(finding.action);
+
+        y += actionH;
+    }
+
+    if (effortText) {
+        document
+            .fillColor(COLORS.secondaryText)
+            .font("Helvetica-Bold")
+            .fontSize(8)
+            .text("Uppskattad insats: ", contentX, y, {
+                width: contentWidth,
+                continued: true,
+            })
+            .font("Helvetica")
+            .fillColor(COLORS.text)
+            .text(effortText);
+    }
+
+    document.y = startY + cardHeight + 8;
+    document.font("Helvetica");
+}
+
+function addFindings(
+    document: PDFKit.PDFDocument,
+    findings: Finding[],
+    totalPages: number
+): void {
+    ensureSpace(document, 140, "Fynd efter prioritet");
 
     addSectionTitle(
         document,
-        "Viktigaste problemen",
-        "WARNING och FAIL visas först så att åtgärder blir enkla att prioritera."
+        "Fynd efter prioritet",
+        findings.length > 0
+            ? `${findings.length} fynd, grupperade per problem och inte per sida.`
+            : undefined
     );
 
-    // Inga problem.
-    if (
-        problems.length === 0
-    ) {
-
-        const startY =
-            document.y;
+    if (findings.length === 0) {
+        const startY = document.y;
 
         document
             .roundedRect(
@@ -970,112 +1206,321 @@ function addProblemSummary(
                 42,
                 7
             )
-            .fill(
-                COLORS.passBackground
-            );
+            .fill(COLORS.passBackground);
 
         document
-            .fillColor(
-                COLORS.pass
-            )
-            .font(
-                "Helvetica-Bold"
-            )
+            .fillColor(COLORS.pass)
+            .font("Helvetica-Bold")
             .fontSize(9)
-            .text(
-                "Inga problem identifierades.",
-                65,
-                startY + 14
-            );
+            .text("Inga problem identifierades.", 65, startY + 14);
 
-        document.y =
-            startY + 55;
-
+        document.y = startY + 58;
         return;
     }
 
-    // Visa problem.
-    for (
-        const result of problems
-    ) {
-
-        addResultCard(
-            document,
-            result,
-            "Viktigaste problemen – fortsättning"
-        );
+    for (const finding of findings) {
+        addFindingCard(document, finding, totalPages);
     }
 }
 
 // ============================================================
-// ALLA QA-RESULTAT
+// PRESTANDA
 // ============================================================
 
-function addAllQAResults(
+function addPerformanceBar(
+    document: PDFKit.PDFDocument,
+    y: number,
+    label: string,
+    score: number,
+    color: string
+): void {
+    const trackX = PAGE.margin + 70;
+    const trackWidth = PAGE.contentWidth - 70 - 50;
+
+    document
+        .fillColor(COLORS.text)
+        .font("Helvetica")
+        .fontSize(9)
+        .text(label, PAGE.margin, y + 5, {
+            width: 66,
+            lineBreak: false,
+        });
+
+    document
+        .roundedRect(trackX, y, trackWidth, 20, 5)
+        .fill(COLORS.lowBackground);
+
+    document
+        .roundedRect(
+            trackX,
+            y,
+            Math.max(8, (trackWidth * Math.min(score, 100)) / 100),
+            20,
+            5
+        )
+        .fill(color);
+
+    // Målvärde.
+    const targetX =
+        trackX + (trackWidth * PERFORMANCE_TARGET) / 100;
+
+    document
+        .rect(targetX - 1, y - 4, 2, 28)
+        .fill(COLORS.dark);
+
+    document
+        .fillColor(COLORS.text)
+        .font("Helvetica-Bold")
+        .fontSize(10)
+        .text(String(score), trackX + trackWidth + 8, y + 5, {
+            width: 36,
+            lineBreak: false,
+        });
+}
+
+function addPerformance(
     document: PDFKit.PDFDocument,
     results: QACheckResult[]
 ): void {
+    const result = results.find((r) =>
+        /prestanda|performance/i.test(r.name)
+    );
 
-    for (
-        const result of results
-    ) {
+    if (!result) return;
 
-        addResultCard(
+    const message = cleanMessage(result.message);
+
+    const desktop = Number(
+        message.match(/Desktop:\s*(\d+)/i)?.[1]
+    );
+
+    const mobile = Number(
+        message.match(/(?:Mobile|Mobil):\s*(\d+)/i)?.[1]
+    );
+
+    if (!desktop && !mobile) return;
+
+    ensureSpace(document, 150, "Prestanda");
+
+    addSectionTitle(document, "Prestanda");
+
+    const failColor =
+        result.status === "PASS"
+            ? COLORS.warning
+            : getStatusColor(result.status);
+
+    const y = document.y + 6;
+
+    if (desktop) {
+        addPerformanceBar(
             document,
-            result
+            y,
+            "Desktop",
+            desktop,
+            desktop >= PERFORMANCE_TARGET ? COLORS.pass : failColor
         );
     }
 
-    document.font(
-        "Helvetica"
+    if (mobile) {
+        addPerformanceBar(
+            document,
+            y + 36,
+            "Mobil",
+            mobile,
+            mobile >= PERFORMANCE_TARGET ? COLORS.pass : failColor
+        );
+    }
+
+    document
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica")
+        .fontSize(8)
+        .text(
+            `Den svarta linjen markerar målet ${PERFORMANCE_TARGET}. LCP, CLS och TBT: [lägg till från mätningen].`,
+            PAGE.margin,
+            y + 76,
+            { width: PAGE.contentWidth }
+        );
+
+    document.y = y + 100;
+}
+
+// ============================================================
+// DET SOM FUNGERAR
+// ============================================================
+
+function addWhatWorks(
+    document: PDFKit.PDFDocument,
+    results: QACheckResult[]
+): void {
+    const passed = results.filter((r) => r.status === "PASS");
+
+    if (passed.length === 0) return;
+
+    ensureSpace(document, 90, "Det som fungerar");
+
+    addSectionTitle(document, "Det som fungerar");
+
+    const nameWidth = 110;
+    const messageX = PAGE.margin + 14 + nameWidth + 8;
+    const messageWidth = PAGE.contentWidth - 14 - nameWidth - 8;
+
+    for (const result of passed) {
+        const message = shortenText(result.message, 160);
+
+        const rowHeight = Math.max(
+            16,
+            measure(
+                document,
+                message,
+                messageWidth,
+                "Helvetica",
+                8.5
+            ) + 6
+        );
+
+        ensureSpace(document, rowHeight, "Det som fungerar");
+
+        const y = document.y;
+
+        // Kontroller som hittade 0 av något är information,
+        // inte ett godkänt resultat.
+        const isInfo = /^0\s/.test(message);
+
+        document
+            .circle(PAGE.margin + 4, y + 5, 3)
+            .fill(isInfo ? COLORS.secondaryText : COLORS.pass);
+
+        document
+            .fillColor(COLORS.text)
+            .font("Helvetica-Bold")
+            .fontSize(8.5)
+            .text(result.name, PAGE.margin + 14, y, {
+                width: nameWidth,
+            });
+
+        document
+            .fillColor(COLORS.muted)
+            .font("Helvetica")
+            .fontSize(8.5)
+            .text(
+                isInfo ? `Information: ${message}` : message,
+                messageX,
+                y,
+                { width: messageWidth, lineGap: 2 }
+            );
+
+        document.y = y + rowHeight;
+    }
+
+    document.y += 6;
+    document.font("Helvetica");
+}
+
+// ============================================================
+// TEKNISK BILAGA (alla ursprungliga kontroller)
+// ============================================================
+
+function addResultCard(
+    document: PDFKit.PDFDocument,
+    result: QACheckResult,
+    continuationTitle = "Teknisk bilaga"
+): void {
+    const message = shortenText(result.message, 700);
+    const textX = 125;
+    const textWidth = document.page.width - 190;
+
+    const messageHeight = message
+        ? measure(
+              document,
+              message,
+              textWidth,
+              "Helvetica",
+              8.5
+          )
+        : 0;
+
+    const cardHeight = Math.max(48, 30 + messageHeight + 12);
+
+    ensureSpace(document, cardHeight + 8, continuationTitle);
+
+    const startY = document.y;
+
+    document
+        .roundedRect(
+            PAGE.margin,
+            startY,
+            PAGE.contentWidth,
+            cardHeight,
+            7
+        )
+        .fill(getStatusBackground(result.status));
+
+    document
+        .fillColor(getStatusColor(result.status))
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .text(result.status, 65, startY + 10, { width: 52 });
+
+    document
+        .fillColor(COLORS.text)
+        .font("Helvetica-Bold")
+        .fontSize(10)
+        .text(result.name, textX, startY + 8, {
+            width: textWidth,
+        });
+
+    if (message) {
+        document
+            .fillColor(COLORS.muted)
+            .font("Helvetica")
+            .fontSize(8.5)
+            .text(message, textX, startY + 25, {
+                width: textWidth,
+                lineGap: 2,
+            });
+    }
+
+    document.y = startY + cardHeight + 8;
+}
+
+function addTechnicalAppendix(
+    document: PDFKit.PDFDocument,
+    results: QACheckResult[]
+): void {
+    startNewPage(document, "Teknisk bilaga");
+
+    addSectionTitle(
+        document,
+        "Teknisk bilaga",
+        `${results.length} automatiserade kontroller med originaltext från verktyget.`
     );
+
+    for (const result of results) {
+        addResultCard(document, result);
+    }
+
+    document.font("Helvetica");
 }
 
 // ============================================================
 // AI-ANALYS
 // ============================================================
 
-// Delar AI-texten i sektioner.
 function parseAIAnalysis(
     aiAnalysis: string
-): {
-    title: string;
-    body: string[];
-}[] {
+): { title: string; body: string[] }[] {
+    const sections: { title: string; body: string[] }[] = [];
 
-    const sections: {
-        title: string;
-        body: string[];
-    }[] = [];
+    let current: { title: string; body: string[] } | null = null;
 
-    let current:
-        | {
-              title: string;
-              body: string[];
-          }
-        | null = null;
+    const lines = aiAnalysis
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
 
-    const lines =
-        aiAnalysis
-            .split(/\r?\n/)
-            .map(
-                (line) =>
-                    line.trim()
-            )
-            .filter(
-                (line) =>
-                    line.length > 0
-            );
-
-    for (
-        const line of lines
-    ) {
-
-        const heading =
-            line.replace(
-                /^\d+[.)]\s*/,
-                ""
-            );
+    for (const line of lines) {
+        const heading = line.replace(/^\d+[.)]\s*/, "");
 
         const isHeading =
             /^(Vad fungerar bra|Viktigaste problemen|Vad resultaten visar|Rekommendationer)$/i.test(
@@ -1083,295 +1528,163 @@ function parseAIAnalysis(
             );
 
         if (isHeading) {
-
-            current = {
-
-                title:
-                    heading,
-
-                body: [],
-            };
-
-            sections.push(
-                current
-            );
-
+            current = { title: heading, body: [] };
+            sections.push(current);
             continue;
         }
 
         if (!current) {
-
-            current = {
-
-                title:
-                    "AI-analys",
-
-                body: [],
-            };
-
-            sections.push(
-                current
-            );
+            current = { title: "AI-analys", body: [] };
+            sections.push(current);
         }
 
-        current.body.push(
-            line
-        );
+        current.body.push(line);
     }
 
     return sections;
 }
 
-// Skriver en AI-sektion.
 function addAISection(
     document: PDFKit.PDFDocument,
     title: string,
     lines: string[]
 ): void {
+    const safeLines = lines
+        .slice(0, 12)
+        .map((line) => shortenText(line, 260));
 
-    const safeLines =
-        lines
-            .slice(0, 12)
-            .map(
-                (line) =>
-                    shortenText(
-                        line,
-                        260
-                    )
-            );
+    ensureSpace(document, 90, "AI-analys");
 
-    // Om det inte finns plats
-    // börjar vi en ny sida.
-    if (
-        document.y >
-        document.page.height -
-            230
-    ) {
+    const color = /problem|rekommend/i.test(title)
+        ? COLORS.warning
+        : COLORS.dark;
 
-        startNewPage(
-            document,
-            "AI-analys – fortsättning"
-        );
-    }
-
-    const startY =
-        document.y;
-
-    const color =
-        /problem|rekommend/i.test(
-            title
-        )
-            ? COLORS.warning
-            : COLORS.dark;
-
-    const background =
-        /problem|rekommend/i.test(
-            title
-        )
-            ? COLORS.warningBackground
-            : COLORS.light;
-
-    // Rubrik.
     document
-        .fillColor(
-            color
-        )
-        .font(
-            "Helvetica-Bold"
-        )
+        .fillColor(color)
+        .font("Helvetica-Bold")
         .fontSize(11)
-        .text(
-            title,
-            PAGE.margin,
-            startY
-        );
+        .text(title, PAGE.margin, document.y);
 
     document.y += 20;
 
-    // AI-rader.
-    for (
-        const rawLine of safeLines
-    ) {
+    for (const rawLine of safeLines) {
+        const isBullet = /^[-*•]/.test(rawLine);
+        const line = rawLine.replace(/^[-*•]\s*/, "");
 
-        const isBullet =
-            /^[-*•]/.test(
-                rawLine
-            );
+        const lineHeight = measure(
+            document,
+            line,
+            PAGE.contentWidth - 25,
+            "Helvetica",
+            8.5
+        );
 
-        const line =
-            rawLine.replace(
-                /^[-*•]\s*/,
-                ""
-            );
-
-        // Beräkna ungefärlig höjd.
-        document
-            .font(
-                "Helvetica"
-            )
-            .fontSize(8.5);
-
-        const lineHeight =
-            document.heightOfString(
-                line,
-                {
-                    width:
-                        PAGE.contentWidth -
-                        25,
-                    lineGap: 2,
-                }
-            );
-
-        // Om raden inte får plats,
-        // fortsätt på ny sida.
-        if (
-            document.y +
-                lineHeight +
-                10 >
-            document.page.height -
-                70
-        ) {
-
-            startNewPage(
-                document,
-                "AI-analys – fortsättning"
-            );
-        }
+        ensureSpace(document, lineHeight + 10, "AI-analys");
 
         if (isBullet) {
+            document
+                .fillColor(color)
+                .font("Helvetica-Bold")
+                .fontSize(8.5)
+                .text("•", PAGE.margin, document.y, {
+                    width: 10,
+                    lineBreak: false,
+                });
 
             document
-                .fillColor(
-                    color
-                )
-                .font(
-                    "Helvetica-Bold"
-                )
+                .fillColor(COLORS.muted)
+                .font("Helvetica")
                 .fontSize(8.5)
-                .text(
-                    "•",
-                    PAGE.margin,
-                    document.y,
-                    {
-                        width: 10,
-                        lineBreak: false,
-                    }
-                );
-
-            document
-                .fillColor(
-                    COLORS.muted
-                )
-                .font(
-                    "Helvetica"
-                )
-                .fontSize(8.5)
-                .text(
-                    line,
-                    PAGE.margin + 15,
-                    document.y,
-                    {
-                        width:
-                            PAGE.contentWidth -
-                            15,
-                        lineGap: 2,
-                    }
-                );
-
+                .text(line, PAGE.margin + 15, document.y, {
+                    width: PAGE.contentWidth - 15,
+                    lineGap: 2,
+                });
         } else {
-
             document
-                .fillColor(
-                    COLORS.muted
-                )
-                .font(
-                    "Helvetica"
-                )
+                .fillColor(COLORS.muted)
+                .font("Helvetica")
                 .fontSize(8.5)
-                .text(
-                    line,
-                    PAGE.margin,
-                    document.y,
-                    {
-                        width:
-                            PAGE.contentWidth,
-                        lineGap: 2,
-                    }
-                );
+                .text(line, PAGE.margin, document.y, {
+                    width: PAGE.contentWidth,
+                    lineGap: 2,
+                });
         }
 
         document.y += 5;
     }
 
-    // Diskret bakgrundslinje under sektionen.
     document
-        .strokeColor(
-            COLORS.border
-        )
+        .strokeColor(COLORS.border)
         .lineWidth(0.5)
-        .moveTo(
-            PAGE.margin,
-            document.y + 3
-        )
-        .lineTo(
-            document.page.width -
-                PAGE.margin,
-            document.y + 3
-        )
+        .moveTo(PAGE.margin, document.y + 3)
+        .lineTo(document.page.width - PAGE.margin, document.y + 3)
         .stroke();
 
     document.y += 15;
-
-    // Säkerställer att variabeln används
-    // utan att skapa extra PDF-element.
-    void background;
 }
 
-// Lägg AI-analysen.
 function addAIAnalysis(
     document: PDFKit.PDFDocument,
     aiAnalysis: string
 ): void {
-
-    startNewPage(
-        document,
-        "AI-analys"
+    const sections = parseAIAnalysis(aiAnalysis).filter(
+        (section) =>
+            !(
+                HIDE_DUPLICATE_AI_SECTIONS &&
+                /^(Vad fungerar bra|Viktigaste problemen|Vad resultaten visar)$/i.test(
+                    section.title
+                )
+            )
     );
 
+    if (sections.length === 0) return;
+
+    startNewPage(document, "AI-analys");
+
     document
-        .fillColor(
-            COLORS.secondaryText
-        )
-        .font(
-            "Helvetica"
-        )
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica")
         .fontSize(8.5)
         .text(
             "Automatiserad analys av QA-resultaten genererad av projektets lokala AI-modell.",
             PAGE.margin,
             document.y,
-            {
-                width:
-                    PAGE.contentWidth,
-            }
+            { width: PAGE.contentWidth }
         );
 
     document.y += 25;
 
-    const sections =
-        parseAIAnalysis(
-            aiAnalysis
-        );
+    for (const section of sections) {
+        addAISection(document, section.title, section.body);
+    }
+}
 
-    for (
-        const section of sections
-    ) {
+// ============================================================
+// GEMENSAM RAPPORTDEL
+// ============================================================
 
-        addAISection(
-            document,
-            section.title,
-            section.body
-        );
+// Sammanfattning, fynd, prestanda, det som fungerar,
+// AI-analys och teknisk bilaga. Används av båda rapporterna.
+function addReportBody(
+    document: PDFKit.PDFDocument,
+    results: QACheckResult[],
+    aiAnalysis?: string
+): void {
+    const totalPages = getTotalPages(results);
+    const findings = deriveFindings(results);
+
+    addSummaryCard(document, results);
+    addDoFirst(document, findings);
+    addFindings(document, findings, totalPages);
+    addPerformance(document, results);
+    addWhatWorks(document, results);
+
+    if (aiAnalysis && aiAnalysis.trim()) {
+        addAIAnalysis(document, aiAnalysis);
+    }
+
+    if (INCLUDE_TECHNICAL_APPENDIX) {
+        addTechnicalAppendix(document, results);
     }
 }
 
@@ -1379,68 +1692,25 @@ function addAIAnalysis(
 // PDF-SKRIVNING
 // ============================================================
 
-// Avslutar PDF-dokumentet.
-//
-// Viktigt:
-// Ingen switchToPage.
-// Ingen bufferedPageRange.
-// Ingen footer-loop.
-// Ingen pageAdded-event.
 async function finishPDF(
     document: PDFKit.PDFDocument,
     stream: fs.WriteStream
 ): Promise<void> {
-
-    await new Promise<void>(
-        (
-            resolve,
-            reject
-        ) => {
-
-            stream.once(
-                "finish",
-                () => {
-                    resolve();
-                }
-            );
-
-            stream.once(
-                "error",
-                (error) => {
-                    reject(error);
-                }
-            );
-
-            // Avslutar PDF:en.
-            document.end();
-        }
-    );
+    await new Promise<void>((resolve, reject) => {
+        stream.once("finish", () => resolve());
+        stream.once("error", (error) => reject(error));
+        document.end();
+    });
 }
 
-// ============================================================
-// RAPPORTSMAPP
-// ============================================================
-
 function createReportsDirectory(): string {
+    const reportsDirectory = path.join(
+        os.tmpdir(),
+        "website-qa-system"
+    );
 
-    const reportsDirectory =
-        path.join(
-            os.tmpdir(),
-            "website-qa-system"
-        );
-
-    if (
-        !fs.existsSync(
-            reportsDirectory
-        )
-    ) {
-
-        fs.mkdirSync(
-            reportsDirectory,
-            {
-                recursive: true,
-            }
-        );
+    if (!fs.existsSync(reportsDirectory)) {
+        fs.mkdirSync(reportsDirectory, { recursive: true });
     }
 
     return reportsDirectory;
@@ -1453,77 +1723,35 @@ function createReportsDirectory(): string {
 export async function createPDFReport(
     data: PDFReportData
 ): Promise<string> {
+    const reportsDirectory = createReportsDirectory();
 
-    const reportsDirectory =
-        createReportsDirectory();
-
-    let hostname =
-        "website";
+    let hostname = "website";
 
     try {
-
-        hostname =
-            new URL(
-                data.websiteUrl
-            ).hostname;
-
+        hostname = new URL(data.websiteUrl).hostname;
     } catch {
-
         // Standardnamn används.
     }
 
-    // Tar bort eventuella tecken
-    // som inte passar i filnamn.
-    hostname =
-        hostname.replace(
-            /[^a-zA-Z0-9.-]/g,
-            "-"
-        );
+    hostname = hostname.replace(/[^a-zA-Z0-9.-]/g, "-");
 
-    const filePath =
-        path.join(
-            reportsDirectory,
-            `QA-Report-${hostname}.pdf`
-        );
-
-    // Skapar PDF-dokumentet.
-    //
-    // OBS:
-    // bufferPages används INTE.
-    const document =
-        new PDFDocument({
-
-            size: "A4",
-
-            margin:
-                PAGE.margin,
-
-            info: {
-
-                Title:
-                    `Website QA Report - ${hostname}`,
-
-                Author:
-                    "Website QA System",
-
-                Subject:
-                    "Automatiserad QA-rapport",
-            },
-        });
-
-    const stream =
-        fs.createWriteStream(
-            filePath
-        );
-
-    // Kopplar PDF till filen.
-    document.pipe(
-        stream
+    const filePath = path.join(
+        reportsDirectory,
+        `QA-Report-${hostname}.pdf`
     );
 
-    // ========================================================
-    // FÖRSTASIDA
-    // ========================================================
+    const document = new PDFDocument({
+        size: "A4",
+        margin: PAGE.margin,
+        info: {
+            Title: `Website QA Report - ${hostname}`,
+            Author: "Website QA System",
+            Subject: "Automatiserad QA-rapport",
+        },
+    });
+
+    const stream = fs.createWriteStream(filePath);
+    document.pipe(stream);
 
     addReportHeader(
         document,
@@ -1533,84 +1761,14 @@ export async function createPDFReport(
 
     addWebsiteInformation(
         document,
-        data.websiteUrl
+        data.websiteUrl,
+        getTotalPages(data.results),
+        data.results.length
     );
 
-    const counts =
-        getResultCounts(
-            data.results
-        );
+    addReportBody(document, data.results, data.aiAnalysis);
 
-    const overallStatus =
-        getOverallStatus(
-            data.results
-        );
-
-    // Sammanfattning.
-    addSectionTitle(
-        document,
-        "Sammanfattning",
-        "En snabb översikt av resultatet från samtliga QA-kontroller."
-    );
-
-    // Övergripande status.
-    addOverallStatusCard(
-        document,
-        overallStatus
-    );
-
-    // PASS/WARNING/FAIL.
-    addSummaryCards(
-        document,
-        counts
-    );
-
-    // Problem.
-    addProblemSummary(
-        document,
-        data.results
-    );
-
-    // ========================================================
-    // QA-KONTROLLER
-    // ========================================================
-
-    startNewPage(
-        document,
-        "QA-kontroller"
-    );
-
-    addSectionTitle(
-        document,
-        "QA-kontroller",
-        `${data.results.length} automatiserade kontroller genomfördes.`
-    );
-
-    addAllQAResults(
-        document,
-        data.results
-    );
-
-    // ========================================================
-    // AI
-    // ========================================================
-
-    if (
-        data.aiAnalysis &&
-        data.aiAnalysis.trim()
-    ) {
-
-        addAIAnalysis(
-            document,
-            data.aiAnalysis
-        );
-    }
-
-    // Avsluta PDF.
-    await finishPDF(
-        document,
-        stream
-    );
+    await finishPDF(document, stream);
 
     return filePath;
 }
@@ -1622,76 +1780,39 @@ export async function createPDFReport(
 export async function createCSVPDFReport(
     reports: CSVPDFReportItem[]
 ): Promise<string> {
+    const reportsDirectory = createReportsDirectory();
 
-    const reportsDirectory =
-        createReportsDirectory();
+    const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-");
 
-    const timestamp =
-        new Date()
-            .toISOString()
-            .replace(
-                /[:.]/g,
-                "-"
-            );
-
-    const filePath =
-        path.join(
-            reportsDirectory,
-            `QA-Report-CSV-${timestamp}.pdf`
-        );
-
-    // Skapar PDF.
-    //
-    // Ingen bufferPages.
-    const document =
-        new PDFDocument({
-
-            size: "A4",
-
-            margin:
-                PAGE.margin,
-
-            info: {
-
-                Title:
-                    "Website QA System - CSV-rapport",
-
-                Author:
-                    "Website QA System",
-
-                Subject:
-                    "Sammanställd QA-rapport",
-            },
-        });
-
-    const stream =
-        fs.createWriteStream(
-            filePath
-        );
-
-    document.pipe(
-        stream
+    const filePath = path.join(
+        reportsDirectory,
+        `QA-Report-CSV-${timestamp}.pdf`
     );
 
-    // ========================================================
-    // CSV-ÖVERSIKT
-    // ========================================================
+    const document = new PDFDocument({
+        size: "A4",
+        margin: PAGE.margin,
+        info: {
+            Title: "Website QA System - CSV-rapport",
+            Author: "Website QA System",
+            Subject: "Sammanställd QA-rapport",
+        },
+    });
 
+    const stream = fs.createWriteStream(filePath);
+    document.pipe(stream);
+
+    // ---- Översikt ----
     addReportHeader(
         document,
         "CSV-import",
         "Sammanställd QA-rapport"
     );
 
-    const completed =
-        reports.filter(
-            (report) =>
-                report.success
-        ).length;
-
-    const failed =
-        reports.length -
-        completed;
+    const completed = reports.filter((r) => r.success).length;
+    const failed = reports.length - completed;
 
     addSectionTitle(
         document,
@@ -1699,8 +1820,7 @@ export async function createCSVPDFReport(
         "Sammanställning av webbplatser som analyserats via CSV-import."
     );
 
-    const overviewY =
-        document.y;
+    const overviewY = document.y;
 
     document
         .roundedRect(
@@ -1710,95 +1830,40 @@ export async function createCSVPDFReport(
             90,
             8
         )
-        .fill(
-            COLORS.light
-        );
+        .fill(COLORS.light);
 
-    // Totalt.
     document
-        .fillColor(
-            COLORS.secondaryText
-        )
-        .font(
-            "Helvetica-Bold"
-        )
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica-Bold")
         .fontSize(8)
-        .text(
-            "WEBBPLATSER",
-            70,
-            overviewY + 15
-        );
+        .text("WEBBPLATSER", 70, overviewY + 15);
 
     document
-        .fillColor(
-            COLORS.dark
-        )
-        .font(
-            "Helvetica-Bold"
-        )
+        .fillColor(COLORS.dark)
         .fontSize(20)
-        .text(
-            String(
-                reports.length
-            ),
-            70,
-            overviewY + 31
-        );
+        .text(String(reports.length), 70, overviewY + 31);
 
-    // Klara.
     document
-        .fillColor(
-            COLORS.pass
-        )
-        .font(
-            "Helvetica-Bold"
-        )
+        .fillColor(COLORS.pass)
         .fontSize(8)
-        .text(
-            "KLARA",
-            225,
-            overviewY + 15
-        );
+        .text("KLARA", 225, overviewY + 15);
 
     document
         .fontSize(18)
-        .text(
-            String(
-                completed
-            ),
-            225,
-            overviewY + 31
-        );
+        .text(String(completed), 225, overviewY + 31);
 
-    // Misslyckade.
     document
-        .fillColor(
-            COLORS.fail
-        )
+        .fillColor(COLORS.fail)
         .fontSize(8)
-        .text(
-            "MISSLYCKADE",
-            350,
-            overviewY + 15
-        );
+        .text("MISSLYCKADE", 350, overviewY + 15);
 
     document
         .fontSize(18)
-        .text(
-            String(
-                failed
-            ),
-            350,
-            overviewY + 31
-        );
+        .text(String(failed), 350, overviewY + 31);
 
     document
-        .fillColor(
-            COLORS.secondaryText
-        )
-        .font(
-            "Helvetica"
-        )
+        .fillColor(COLORS.secondaryText)
+        .font("Helvetica")
         .fontSize(8)
         .text(
             `Rapport skapad: ${getReportDate()}`,
@@ -1806,63 +1871,40 @@ export async function createCSVPDFReport(
             overviewY + 68
         );
 
-    document.y =
-        overviewY + 110;
+    document.y = overviewY + 110;
 
-    // ========================================================
-    // RESULTAT PER WEBBPLATS
-    // ========================================================
-
+    // ---- Resultat per webbplats ----
     addSectionTitle(
         document,
         "Resultat per webbplats",
         "Översikt över status och antal kontroller för varje webbplats."
     );
 
-    for (
-        const report of reports
-    ) {
+    for (const report of reports) {
+        if (!report.success) {
+            const errorText = shortenText(
+                report.error ?? "Okänt fel",
+                500
+            );
 
-        // Om skanningen misslyckades.
-        if (
-            !report.success
-        ) {
-
-            const errorText =
-                shortenText(
-                    report.error ??
-                        "Okänt fel",
-                    500
-                );
-
-            const errorHeight =
-                Math.max(
-                    65,
-                    document.heightOfString(
-                        errorText,
-                        {
-                            width:
-                                PAGE.contentWidth -
-                                100,
-                        }
-                    ) + 42
-                );
-
-            if (
-                document.y +
-                    errorHeight >
-                document.page.height -
-                    70
-            ) {
-
-                startNewPage(
+            const errorHeight = Math.max(
+                65,
+                measure(
                     document,
-                    "Resultat per webbplats – fortsättning"
-                );
-            }
+                    errorText,
+                    PAGE.contentWidth - 125,
+                    "Helvetica",
+                    8
+                ) + 42
+            );
 
-            const startY =
-                document.y;
+            ensureSpace(
+                document,
+                errorHeight + 10,
+                "Resultat per webbplats"
+            );
+
+            const startY = document.y;
 
             document
                 .roundedRect(
@@ -1872,110 +1914,46 @@ export async function createCSVPDFReport(
                     errorHeight,
                     7
                 )
-                .fill(
-                    COLORS.failBackground
-                );
+                .fill(COLORS.failBackground);
 
             document
-                .fillColor(
-                    COLORS.fail
-                )
-                .font(
-                    "Helvetica-Bold"
-                )
+                .fillColor(COLORS.fail)
+                .font("Helvetica-Bold")
                 .fontSize(9)
-                .text(
-                    "FAIL",
-                    65,
-                    startY + 12
-                );
+                .text("FAIL", 65, startY + 12);
 
             document
-                .fillColor(
-                    COLORS.text
-                )
-                .font(
-                    "Helvetica-Bold"
-                )
+                .fillColor(COLORS.text)
                 .fontSize(9)
-                .text(
-                    report.websiteUrl,
-                    110,
-                    startY + 11,
-                    {
-                        width:
-                            PAGE.contentWidth -
-                            125,
-                    }
-                );
+                .text(report.websiteUrl, 110, startY + 11, {
+                    width: PAGE.contentWidth - 125,
+                });
 
             document
-                .fillColor(
-                    COLORS.muted
-                )
-                .font(
-                    "Helvetica"
-                )
+                .fillColor(COLORS.muted)
+                .font("Helvetica")
                 .fontSize(8)
-                .text(
-                    errorText,
-                    110,
-                    startY + 30,
-                    {
-                        width:
-                            PAGE.contentWidth -
-                            125,
-                        lineGap: 2,
-                    }
-                );
+                .text(errorText, 110, startY + 30, {
+                    width: PAGE.contentWidth - 125,
+                    lineGap: 2,
+                });
 
-            document.y =
-                startY +
-                errorHeight +
-                10;
+            document.y = startY + errorHeight + 10;
 
             continue;
         }
 
-        // Räkna resultat.
-        const counts =
-            getResultCounts(
-                report.results
-            );
+        const counts = getResultCounts(report.results);
+        const overallStatus = getOverallStatus(report.results);
+        const cardHeight = 82;
 
-        const overallStatus =
-            getOverallStatus(
-                report.results
-            );
+        ensureSpace(
+            document,
+            cardHeight + 10,
+            "Resultat per webbplats"
+        );
 
-        const color =
-            getStatusColor(
-                overallStatus
-            );
-
-        const background =
-            getStatusBackground(
-                overallStatus
-            );
-
-        const cardHeight =
-            82;
-
-        if (
-            document.y +
-                cardHeight >
-            document.page.height -
-                70
-        ) {
-
-            startNewPage(
-                document,
-                "Resultat per webbplats – fortsättning"
-            );
-        }
-
-        const startY =
-            document.y;
+        const startY = document.y;
 
         document
             .roundedRect(
@@ -1985,168 +1963,79 @@ export async function createCSVPDFReport(
                 cardHeight,
                 7
             )
-            .fill(
-                background
-            );
+            .fill(getStatusBackground(overallStatus));
 
         document
-            .fillColor(
-                color
-            )
-            .font(
-                "Helvetica-Bold"
-            )
+            .fillColor(getStatusColor(overallStatus))
+            .font("Helvetica-Bold")
             .fontSize(9)
-            .text(
-                overallStatus,
-                65,
-                startY + 12
-            );
+            .text(overallStatus, 65, startY + 12);
 
         document
-            .fillColor(
-                COLORS.text
-            )
-            .font(
-                "Helvetica-Bold"
-            )
+            .fillColor(COLORS.text)
             .fontSize(9.5)
-            .text(
-                report.websiteUrl,
-                135,
-                startY + 11,
-                {
-                    width:
-                        PAGE.contentWidth -
-                        150,
-                }
-            );
+            .text(report.websiteUrl, 135, startY + 11, {
+                width: PAGE.contentWidth - 150,
+            });
 
         document
-            .fillColor(
-                COLORS.pass
-            )
-            .font(
-                "Helvetica"
-            )
+            .fillColor(COLORS.pass)
+            .font("Helvetica")
             .fontSize(8)
-            .text(
-                `PASS: ${counts.pass}`,
-                135,
-                startY + 34
-            );
+            .text(`PASS: ${counts.pass}`, 135, startY + 34);
 
         document
-            .fillColor(
-                COLORS.warning
-            )
-            .text(
-                `WARNING: ${counts.warning}`,
-                220,
-                startY + 34
-            );
+            .fillColor(COLORS.warning)
+            .text(`WARNING: ${counts.warning}`, 220, startY + 34);
 
         document
-            .fillColor(
-                COLORS.fail
-            )
-            .text(
-                `FAIL: ${counts.fail}`,
-                335,
-                startY + 34
-            );
+            .fillColor(COLORS.fail)
+            .text(`FAIL: ${counts.fail}`, 335, startY + 34);
 
         document
-            .fillColor(
-                COLORS.secondaryText
-            )
+            .fillColor(COLORS.secondaryText)
             .text(
                 `Antal kontroller: ${report.results.length}`,
                 135,
                 startY + 55
             );
 
-        document.y =
-            startY +
-            cardHeight +
-            10;
+        document.y = startY + cardHeight + 10;
     }
 
-    // ========================================================
-    // DETALJER PER WEBBPLATS
-    // ========================================================
+    // ---- Detaljer per webbplats ----
+    for (const report of reports) {
+        startNewPage(document, "Detaljerad QA-rapport");
 
-    for (
-        const report of reports
-    ) {
-
-        startNewPage(
-            document,
-            "Detaljerad QA-rapport"
-        );
-
-        // URL.
         document
-            .fillColor(
-                COLORS.secondaryText
-            )
-            .font(
-                "Helvetica"
-            )
+            .fillColor(COLORS.secondaryText)
+            .font("Helvetica")
             .fontSize(8.5)
-            .text(
-                report.websiteUrl,
-                PAGE.margin,
-                document.y
-            );
+            .text(report.websiteUrl, PAGE.margin, document.y);
 
         document.y += 22;
 
-        // Misslyckad skanning.
-        if (
-            !report.success
-        ) {
-
-            addSectionTitle(
-                document,
-                "Skanningen misslyckades"
-            );
+        if (!report.success) {
+            addSectionTitle(document, "Skanningen misslyckades");
 
             document
-                .fillColor(
-                    COLORS.fail
-                )
-                .font(
-                    "Helvetica-Bold"
-                )
+                .fillColor(COLORS.fail)
+                .font("Helvetica-Bold")
                 .fontSize(12)
-                .text(
-                    "FAIL",
-                    PAGE.margin,
-                    document.y
-                );
+                .text("FAIL", PAGE.margin, document.y);
 
             document.y += 22;
 
             document
-                .fillColor(
-                    COLORS.muted
-                )
-                .font(
-                    "Helvetica"
-                )
+                .fillColor(COLORS.muted)
+                .font("Helvetica")
                 .fontSize(9)
                 .text(
-                    shortenText(
-                        report.error ??
-                            "Okänt fel",
-                        800
-                    ),
+                    shortenText(report.error ?? "Okänt fel", 800),
                     PAGE.margin,
                     document.y,
                     {
-                        width:
-                            PAGE.contentWidth,
+                        width: PAGE.contentWidth,
                         lineGap: 3,
                     }
                 );
@@ -2154,72 +2043,14 @@ export async function createCSVPDFReport(
             continue;
         }
 
-        // Sammanfattning.
-        const counts =
-            getResultCounts(
-                report.results
-            );
-
-        const overallStatus =
-            getOverallStatus(
-                report.results
-            );
-
-        addSectionTitle(
+        addReportBody(
             document,
-            "Sammanfattning",
-            `${report.results.length} automatiserade kontroller genomfördes.`
+            report.results,
+            report.aiAnalysis
         );
-
-        addOverallStatusCard(
-            document,
-            overallStatus
-        );
-
-        addSummaryCards(
-            document,
-            counts
-        );
-
-        addProblemSummary(
-            document,
-            report.results
-        );
-
-        // QA-kontroller.
-        startNewPage(
-            document,
-            "QA-kontroller"
-        );
-
-        addSectionTitle(
-            document,
-            "QA-kontroller"
-        );
-
-        addAllQAResults(
-            document,
-            report.results
-        );
-
-        // AI.
-        if (
-            report.aiAnalysis &&
-            report.aiAnalysis.trim()
-        ) {
-
-            addAIAnalysis(
-                document,
-                report.aiAnalysis
-            );
-        }
     }
 
-    // Avsluta CSV-PDF.
-    await finishPDF(
-        document,
-        stream
-    );
+    await finishPDF(document, stream);
 
     return filePath;
 }
