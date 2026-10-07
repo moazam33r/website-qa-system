@@ -219,7 +219,6 @@ export async function scanWebsite(
 
   if (seoResult.failed.length > 0) {
 
-    // Tar med både antal och detaljerade SEO-fel.
     const seoDetails =
       seoResult.failed
         .map((error) => `- ${error}`)
@@ -235,8 +234,6 @@ export async function scanWebsite(
 
   } else if (seoResult.warnings.length > 0) {
 
-    // Tar med både antal och detaljerade SEO-varningar.
-    // Detta gör att AI:n kan se exakt vilka sidor som har problem.
     const seoDetails =
       seoResult.warnings
         .map((warning) => `- ${warning}`)
@@ -252,7 +249,6 @@ export async function scanWebsite(
 
   } else {
 
-    // Om inga problem finns visas det vanliga PASS-resultatet.
     results.push({
       name: "SEO",
       status: "PASS",
@@ -271,7 +267,6 @@ export async function scanWebsite(
     "Analyserar webbplatsens prestanda..."
   );
 
-  // Kontrollerar webbplatsens prestanda.
   const performanceResult =
     await checkPerformance(url);
 
@@ -340,7 +335,6 @@ export async function scanWebsite(
     "Kontrollerar Cookie / GDPR..."
   );
 
-  // Kontrollerar Cookie / GDPR-sidor.
   const cookieGdprResult =
     await checkCookieGdpr(
       page,
@@ -424,7 +418,6 @@ export async function scanWebsite(
       waitUntil: "domcontentloaded",
     });
 
-    // Hämtar JSON-LD-data från sidan.
     const jsonLdScripts = await page
       .locator('script[type="application/ld+json"]')
       .allTextContents();
@@ -441,7 +434,6 @@ export async function scanWebsite(
 
         for (const object of objects) {
 
-          // Kontrollerar huvudobjektet.
           if (
             object &&
             typeof object === "object" &&
@@ -471,7 +463,6 @@ export async function scanWebsite(
             }
           }
 
-          // Kontrollerar även @graph.
           if (
             object &&
             typeof object === "object" &&
@@ -615,75 +606,350 @@ export async function scanWebsite(
     "Kontrollerar text och stavning..."
   );
 
-  // Tar bort Google-recensioner från sidan innan texten kontrolleras.
-  // Detta förhindrar att kundnamn och recensionstext räknas som stavfel.
-  await page.evaluate(() => {
 
-    const elements = Array.from(
-      document.querySelectorAll("body *")
+  // =======================================================
+  // HÄMTA TEXT FRÅN ALLA SIDOR
+  // =======================================================
+
+  // Sparar alla textfel från alla crawlade sidor.
+  const textIssues = [];
+
+
+  // Räknar hur många sidor som faktiskt kontrolleras.
+  const totalTextPages = pages.length;
+
+
+  // Sparar den hämtade texten från varje sida.
+  //
+  // Vi behöver texten först för att kunna
+  // analysera hela webbplatsen tillsammans.
+  const pageTexts =
+    new Map<string, string>();
+
+
+  // Går igenom alla sidor som crawlern hittade.
+  for (
+    let i = 0;
+    i < pages.length;
+    i++
+  ) {
+
+    const pageUrl = pages[i];
+
+    console.log(
+      `\nHämtar text ${i + 1}/${totalTextPages}: ${pageUrl}`
     );
 
-    for (const element of elements) {
 
-      const text =
-        element.textContent?.trim() || "";
+    try {
 
-      // Hittar början av Google-recensionswidgeten.
-      if (
-        text.includes("Publicerat på Google") &&
-        text.length < 5000
-      ) {
+      // Öppnar sidan som ska kontrolleras.
+      await page.goto(
+        pageUrl,
+        {
+          waitUntil: "domcontentloaded",
+          timeout: 30000,
+        }
+      );
 
-        let parent =
-          element.parentElement;
 
-        // Letar efter ett större element som innehåller hela widgeten.
-        for (
-          let i = 0;
-          i < 6 && parent;
-          i++
-        ) {
+      // ---------------------------------------------------
+      // TA BORT GOOGLE-RECENSIONER
+      // ---------------------------------------------------
 
-          const parentText =
-            parent.textContent?.trim() || "";
+      // Google-recensioner ska inte räknas som webbplatsens
+      // egen text eftersom de är användargenererade.
+      await page.evaluate(() => {
 
+        const elements = Array.from(
+          document.querySelectorAll("body *")
+        );
+
+        for (const element of elements) {
+
+          const text =
+            element.textContent?.trim() || "";
+
+
+          // Hittar början av Google-recensionswidgeten.
           if (
-            parentText.includes("Publicerat på Google") &&
-            parentText.length < 10000
+            text.includes("Publicerat på Google") &&
+            text.length < 5000
           ) {
 
-            parent.remove();
+            let parent =
+              element.parentElement;
 
-            break;
+
+            // Letar efter ett större element som
+            // innehåller hela recension-widgeten.
+            for (
+              let i = 0;
+              i < 6 && parent;
+              i++
+            ) {
+
+              const parentText =
+                parent.textContent?.trim() || "";
+
+
+              if (
+                parentText.includes("Publicerat på Google") &&
+                parentText.length < 10000
+              ) {
+
+                parent.remove();
+
+                break;
+              }
+
+
+              parent =
+                parent.parentElement;
+            }
           }
-
-          parent =
-            parent.parentElement;
         }
-      }
+      });
+
+
+      // ---------------------------------------------------
+      // HÄMTA TEXT
+      // ---------------------------------------------------
+
+      // Hämtar endast synlig text från sidan.
+      const pageText =
+        await page.locator("body").innerText();
+
+
+      // Sparar texten så att vi senare kan
+      // räkna vilka ord som återkommer på webbplatsen.
+      pageTexts.set(
+        pageUrl,
+        pageText
+      );
+
+
+      // ---------------------------------------------------
+      // PROGRESS
+      // ---------------------------------------------------
+
+      // Den första delen av textkontrollen använder
+      // området 54-55 %.
+      const textProgress =
+        54 +
+        Math.round(
+          ((i + 1) / totalTextPages) * 1
+        );
+
+      reportProgress(
+        textProgress,
+        `Hämtar text ${i + 1}/${totalTextPages}...`
+      );
+
+
+    } catch (error) {
+
+      // Ett problem med en enskild sida ska inte
+      // stoppa hela QA-skanningen.
+      console.log(
+        `⚠ Kunde inte hämta text på: ${pageUrl}`
+      );
+
+      console.log(
+        error
+      );
     }
-  });
-
-  // Hämtar synlig text från resten av sidan.
-  const pageText =
-    await page.locator("body").innerText();
-
-  // Skickar texten till LanguageTool.
-  const textCheckResult =
-    await checkText(pageText);
-
-  // Lägger till resultatet i QA-rapporten.
-  results.push({
-    name: "Text / stavning",
-    status: textCheckResult.status,
-    message:
-      textCheckResult.errors > 0
-        ? `${textCheckResult.errors} möjliga textfel hittades`
-        : "Inga stavnings- eller grammatikfel hittades",
-  });
+  }
 
 
-    // =======================================================
+  // =======================================================
+  // RÄKNA ÅTERKOMMANDE ORD
+  // =======================================================
+
+  // Räknar hur många olika sidor varje ord
+  // förekommer på.
+  //
+  // Vi räknar sidor och inte antal förekomster
+  // på samma sida. Det gör kontrollen mer stabil.
+  const siteWordFrequency =
+    new Map<string, number>();
+
+
+  for (
+    const pageText
+    of pageTexts.values()
+  ) {
+
+    // Hämtar ord från sidan.
+    //
+    // Svenska bokstäver inkluderas så att exempelvis
+    // branschord med å, ä och ö behandlas korrekt.
+    const words =
+      pageText
+        .toLowerCase()
+        .match(/[a-zåäöéü]+/gi) || [];
+
+
+    // Ett ord räknas endast en gång per sida.
+    const uniqueWords =
+      new Set(words);
+
+
+    for (const word of uniqueWords) {
+
+      // Ignorerar mycket korta ord.
+      if (
+        word.length < 5
+      ) {
+        continue;
+      }
+
+
+      const currentCount =
+        siteWordFrequency.get(word) || 0;
+
+
+      siteWordFrequency.set(
+        word,
+        currentCount + 1
+      );
+    }
+  }
+
+
+  // Visar några grundläggande uppgifter
+  // om frekvenskontrollen i terminalen.
+  console.log(
+    `\n✓ ${siteWordFrequency.size} unika ord analyserades på webbplatsen`
+  );
+
+
+  // =======================================================
+  // LANGUAGE TOOL
+  // =======================================================
+
+  // Nu när vi vet vilka ord som återkommer
+  // på webbplatsen kan vi köra LanguageTool.
+  for (
+    let i = 0;
+    i < pages.length;
+    i++
+  ) {
+
+    const pageUrl = pages[i];
+
+
+    // Hämtar tidigare sparad text.
+    const pageText =
+      pageTexts.get(pageUrl) || "";
+
+
+    console.log(
+      `\nAnalyserar text ${i + 1}/${totalTextPages}: ${pageUrl}`
+    );
+
+
+    try {
+
+      // Skickar texten till LanguageTool.
+      //
+      // Vi skickar även med:
+      // - URL
+      // - frekvensdata från hela webbplatsen
+      const textCheckResult =
+        await checkText(
+          pageText,
+          "sv",
+          pageUrl,
+          siteWordFrequency
+        );
+
+
+      // Lägger till alla hittade fel i den
+      // gemensamma listan.
+      textIssues.push(
+        ...textCheckResult.issues
+      );
+
+
+      // ---------------------------------------------------
+      // PROGRESS
+      // ---------------------------------------------------
+
+      // Den andra delen av textkontrollen använder
+      // området 55-56 %.
+      const textProgress =
+        55 +
+        Math.round(
+          ((i + 1) / totalTextPages) * 1
+        );
+
+
+      reportProgress(
+        textProgress,
+        `Analyserar text ${i + 1}/${totalTextPages}...`
+      );
+
+
+    } catch (error) {
+
+      // Ett problem med en enskild sida ska inte
+      // stoppa hela QA-skanningen.
+      console.log(
+        `⚠ Kunde inte analysera text på: ${pageUrl}`
+      );
+
+      console.log(
+        error
+      );
+    }
+  }
+
+
+  // -------------------------------------------------------
+  // TEXTRESULTAT
+  // -------------------------------------------------------
+
+  // Om minst ett textfel hittades blir resultatet WARNING.
+  if (
+    textIssues.length > 0
+  ) {
+
+    results.push({
+      name: "Text / stavning",
+      status: "WARNING",
+      message:
+        `${textIssues.length} möjliga textfel hittades\n\n` +
+
+        textIssues
+          .map(
+            (issue) =>
+              `- Felaktig text: "${issue.matchedText}"\n` +
+              `  Förslag: ${
+                issue.suggestions.length > 0
+                  ? issue.suggestions.join(", ")
+                  : "Inget förslag"
+              }\n` +
+              `  Sida: ${issue.pageUrl}\n` +
+              `  Sammanhang: ${issue.context}\n` +
+              `  Förklaring: ${issue.message}`
+          )
+          .join("\n\n"),
+    });
+
+  } else {
+
+    // Om inga fel hittades blir resultatet PASS.
+    results.push({
+      name: "Text / stavning",
+      status: "PASS",
+      message:
+        "Inga stavnings- eller grammatikfel hittades",
+    });
+  }
+
+
+  // =======================================================
   // 11. LÄNKAR
   // =======================================================
 
@@ -709,6 +975,7 @@ export async function scanWebsite(
     pages
   );
 
+
   // =======================================================
   // SAMMANFATTNING
   // =======================================================
@@ -720,14 +987,17 @@ export async function scanWebsite(
     linkResult.externalPassed +
     linkResult.externalFailed;
 
+
   // Räknar trasiga HTTP/HTTPS-länkar.
   const totalLinkFailures =
     linkResult.internalFailed +
     linkResult.externalFailed;
 
+
   // Räknar alla telefonlänkar.
   const totalPhoneLinks =
     linkResult.phoneLinks.length;
+
 
   // Räknar giltiga telefonlänkar.
   const validPhoneLinks =
@@ -735,11 +1005,13 @@ export async function scanWebsite(
       (phone) => phone.valid
     ).length;
 
+
   // Räknar ogiltiga telefonlänkar.
   const invalidPhoneLinks =
     linkResult.phoneLinks.filter(
       (phone) => !phone.valid
     ).length;
+
 
   // Räknar möjliga Link Intent-problem.
   const totalIntentFailures =
@@ -750,17 +1022,10 @@ export async function scanWebsite(
   // TRASIGA HTTP-LÄNKAR
   // =======================================================
 
-  // Skapar detaljerad information om varje trasig länk.
-  //
-  // Informationen skickas vidare till:
-  // - PDF-rapporten
-  // - AI-analysen
-  // - terminalrapporten
   const linkFailureDetails =
     linkResult.linkFailures
       .map((failure) => {
 
-        // Visar HTTP-status om en sådan finns.
         const statusText =
           failure.status !== undefined
             ? `\n  Status: ${failure.status}`
@@ -781,8 +1046,6 @@ export async function scanWebsite(
   // LINK INTENT-FEL
   // =======================================================
 
-  // Skapar detaljer om länkar som verkar leda
-  // till fel typ av sida.
   const intentFailureDetails =
     linkResult.intentFailures
       .map((failure) => {
@@ -803,7 +1066,6 @@ export async function scanWebsite(
   // OGILTIGA TELEFONNUMMER
   // =======================================================
 
-  // Hämtar endast de telefonnummer som inte är giltiga.
   const invalidPhoneResults =
     linkResult.phoneLinks.filter(
       (phone) => !phone.valid
@@ -814,11 +1076,6 @@ export async function scanWebsite(
   // GRUPPERA SAMMA OGILTIGA NUMMER
   // -------------------------------------------------------
 
-  // Samma telefonnummer kan förekomma i exempelvis
-  // header och footer på flera olika sidor.
-  //
-  // Därför grupperar vi samma nummer så att PDF-rapporten
-  // inte behöver visa samma fel om och om igen.
   const groupedInvalidPhones =
     new Map<
       string,
@@ -829,22 +1086,23 @@ export async function scanWebsite(
       }
     >();
 
+
   for (const phone of invalidPhoneResults) {
 
-    // Använder själva telefonnumret som nyckel.
     const existing =
       groupedInvalidPhones.get(
         phone.phoneNumber
       );
 
+
     if (existing) {
 
-      // Undviker att samma sida läggs till flera gånger.
       if (
         !existing.pages.includes(
           phone.sourcePage
         )
       ) {
+
         existing.pages.push(
           phone.sourcePage
         );
@@ -852,7 +1110,6 @@ export async function scanWebsite(
 
     } else {
 
-      // Skapar en ny grupp för telefonnumret.
       groupedInvalidPhones.set(
         phone.phoneNumber,
         {
@@ -882,7 +1139,6 @@ export async function scanWebsite(
     )
       .map((phone) => {
 
-        // Gör varje sida till en separat rad.
         const pageList =
           phone.pages
             .map(
@@ -922,8 +1178,6 @@ export async function scanWebsite(
         `Trasiga länkar:\n\n` +
         linkFailureDetails +
 
-        // Om det även finns ogiltiga telefonnummer
-        // lägger vi till dem efter HTTP-felen.
         (
           invalidPhoneLinks > 0
             ? `\n\n` +
@@ -977,8 +1231,6 @@ export async function scanWebsite(
 
   } else if (invalidPhoneLinks > 0) {
 
-    // HTTP-länkar och Link Intent fungerar,
-    // men minst ett telefonnummer är ogiltigt.
     results.push({
       name: "Länkar",
       status: "WARNING",
@@ -1019,6 +1271,7 @@ export async function scanWebsite(
         `inga tydliga felaktiga destinationer hittades`,
     });
   }
+
 
   // =======================================================
   // 12. BILDER
@@ -1093,23 +1346,17 @@ export async function scanWebsite(
     "Kontrollerar formulärvalidering..."
   );
 
-  // Kontrollerar formulärvalidering och skickar progress vidare.
   const validationResult = await checkValidation(
     page,
     pages,
     (percentage, message) => {
 
-      // Validation skickar progress mellan 0 och 100.
-      //
-      // Vi mappar den till området 65–72 % av den
-      // övergripande QA-processen.
       const mappedPercentage =
         65 +
         Math.round(
           (percentage / 100) * 7
         );
 
-      // Skickar den mappade progressen till servern.
       reportProgress(
         mappedPercentage,
         message
@@ -1279,9 +1526,6 @@ export async function scanWebsite(
     results.push({
       name: "Google Maps",
       status: "PASS",
-
-      // Visar hur många Google Maps-förekomster som hittades.
-      // Resultatet kan vara en länk eller en inbäddad karta.
       message:
         `${googleMapsResult.found.length} Google Maps-förekomster hittades`,
     });
@@ -1291,8 +1535,6 @@ export async function scanWebsite(
     results.push({
       name: "Google Maps",
       status: "WARNING",
-
-      // Visar tydligt att ingen Google Maps-förekomst hittades.
       message:
         "Ingen Google Maps-förekomst hittades",
     });
@@ -1364,8 +1606,6 @@ export async function scanWebsite(
   // 20. AI-ANALYS
   // =======================================================
 
-  // Analyserar alla QA-resultat med den lokala AI-modellen.
-  // Om AI:n inte fungerar ska den vanliga QA-rapporten ändå visas.
   console.log("\n--- AI-ANALYS ---");
 
   reportProgress(
@@ -1378,21 +1618,17 @@ export async function scanWebsite(
 
   try {
 
-    // Försöker analysera QA-resultaten med Ollama.
     aiAnalysis =
       await analyzeQAResults(results);
 
-    // Visar AI:ns analys om den lyckades.
     console.log(aiAnalysis);
 
   } catch (error) {
 
-    // AI-fel ska inte stoppa resten av QA-systemet.
     console.log(
       "⚠ AI-analysen kunde inte genomföras."
     );
 
-    // Lägger till en WARNING i QA-rapporten.
     results.push({
       name: "AI-analys",
       status: "WARNING",
@@ -1411,8 +1647,6 @@ export async function scanWebsite(
     "Sammanställer QA-rapport..."
   );
 
-  // Skriver alltid ut den färdiga QA-rapporten,
-  // även om AI-analysen misslyckades.
   printQAReport(
     url,
     results
@@ -1433,7 +1667,6 @@ export async function scanWebsite(
   // RETURNERA RESULTAT
   // =======================================================
 
-  // Returnerar grundläggande information samt AI-analysen.
   return {
     url: pageResult.url,
     status: pageResult.status,

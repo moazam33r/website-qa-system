@@ -241,10 +241,17 @@ export async function checkPages(
               )
 
               // Behåller bara länkar från samma webbplats.
-              .filter(
-                (href) =>
-                  href.startsWith(origin)
-              ),
+// HTTP och HTTPS ska räknas som samma webbplats.
+.filter((href) => {
+  try {
+    return (
+      new URL(href).hostname ===
+      new URL(origin).hostname
+    );
+  } catch {
+    return false;
+  }
+}),
 
           // Skickar med webbplatsens domän.
           origin
