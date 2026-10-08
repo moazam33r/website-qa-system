@@ -392,13 +392,47 @@ export async function scanWebsite(
   const domainsResult =
     await checkDomains(url);
 
-  results.push({
-    name: "Alternativa domäner",
-    status: domainsResult.status,
-    message:
-      `${domainsResult.passed} fungerar, ` +
-      `${domainsResult.failed} fungerar inte`,
-  });
+  // Hämtar de alternativa domäner som inte fungerar.
+const failedDomains =
+  domainsResult.results.filter(
+    (domain) => !domain.working
+  );
+
+
+// Skapar detaljer för varje domän som inte fungerar.
+const failedDomainDetails =
+  failedDomains
+    .map((domain) => {
+
+      const statusText =
+        domain.status === 0
+          ? "Kunde inte nås"
+          : `Status: ${domain.status}`;
+
+      return (
+        `- Domän: ${domain.url}\n` +
+        `  ${statusText}`
+      );
+    })
+    .join("\n\n");
+
+
+results.push({
+  name: "Alternativa domäner",
+  status: domainsResult.status,
+
+  message:
+    `${domainsResult.passed} fungerar, ` +
+    `${domainsResult.failed} fungerar inte` +
+
+    (
+      failedDomains.length > 0
+        ? `\n\n` +
+          `Domäner som inte fungerar:\n\n` +
+          failedDomainDetails
+        : ""
+    ),
+});
 
 
   // =======================================================
